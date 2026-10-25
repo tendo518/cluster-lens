@@ -1,0 +1,13 @@
+__pycache__/
+*.py[oc]
+.venv/
+.ruff_cache/
+/build/
+/dist/
+/*.egg-info/
+/data/
+/config/
+# Real configuration, node reports and SQLite history are private local state.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

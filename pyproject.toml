@@ -1,0 +1,11 @@
+[project]
+name = "hqlab-monitor"
+version = "0.1.0"
+description = "Read-only push-based server and GPU monitoring, independent of deployment tooling"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+# Source/release-archive execution: no package installer or build backend is required.
+[tool.uv]
+package = false

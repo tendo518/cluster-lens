@@ -1,0 +1,7 @@
+[
+  {
+    "name": "node-a",
+    "address": "192.0.2.10",
+    "groups": ["gpu"]
+  }
+]
