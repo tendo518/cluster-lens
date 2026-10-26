@@ -3,6 +3,6 @@ revision = 5
 requires-python = ">=3.9"
 
 [[package]]
-name = "hqlab-monitor"
+name = "cluster-lens"
 version = "0.1.0"
 source = { virtual = "." }

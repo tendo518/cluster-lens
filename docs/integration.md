@@ -1,4 +1,16 @@
-# 项目与部署边界
+# ClusterLens 与部署工程的边界
+
+应用仓库为 [tendo518/cluster-lens](https://github.com/tendo518/cluster-lens)，与部署仓库分别提交和发布。私有仓库需独立授权；部署方建议使用 Git submodule 固定到已验证的提交，而不是每次部署自动拉取最新分支。普通配置生成 / 部署不应隐式调用 `git pull` 或更新引用。
+
+Ansible 仓库可按如下流程引用应用（初次添加由维护者执行，不是每次部署步骤）：
+
+```bash
+git submodule add https://github.com/tendo518/cluster-lens.git projects/monitor
+# 在部署仓库提交 .gitmodules 和子模块引用，其他操作者再使用：
+git submodule update --init --recursive
+```
+
+`projects/monitor` 只是部署方选择的检出路径，不是应用运行依赖。既有部署可继续使用此路径；不要为更名自动移动数据库或换发凭据。
 
 ## 两个独立职责
 

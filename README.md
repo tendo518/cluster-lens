@@ -1,4 +1,6 @@
-# HQLab Monitor
+# ClusterLens
+
+独立仓库：**https://github.com/tendo518/cluster-lens**（private）。项目名为 **ClusterLens**，原 HQLab Monitor 的 Python 运行包及兼容接口保持不变。
 
 独立的只读服务器 / GPU 监控项目：节点本地采集并推送，中心接收、保存 SQLite 历史并提供 Web 页面。**整个目录可以单独复制或检出后使用，不需要父目录、Ansible inventory、SSH 配置或运维环境。**
 
@@ -11,6 +13,17 @@
 | 浏览器回归测试 | Node 22+、Chrome/Chromium，仅开发机需要 |
 
 前端是 HTML / JS / CSS / SVG，无构建和 npm 安装步骤。普通运行、配置生成和发布不要求 uv、pip、Node 或 Ansible。`pyproject.toml` / `uv.lock` 是本项目自己的零依赖环境描述，uv 用户可选择在此目录执行 `uv sync`；不是必须步骤，也不使用其他项目的虚拟环境。
+
+## 获取源码
+
+需要拥有私有仓库的读取权限：
+
+```bash
+gh repo clone tendo518/cluster-lens
+cd cluster-lens
+```
+
+此仓库只保存监控应用及其历史，不包含集群 inventory、Ansible playbook、Vault 文件或真实凭据。部署方可通过 Git submodule 固定应用版本，也可独立检出后调用公开 CLI，见[集成契约](docs/integration.md)。
 
 ## 快速运行
 
@@ -89,6 +102,17 @@ uv.lock               本项目独立锁文件（uv 可选）
 Justfile              只引用本项目的开发命令
 config/、data/、dist/  本地私密配置、历史和可重建产物；gitignored
 ```
+
+## 名称与兼容性
+
+仓库及 Python 项目元数据名称为 `cluster-lens`。为避免拆仓影响现有安装，下列兼容接口保持不变：
+
+- 运行命令 `python3 -m monitor`、`python3 -m project_tools`。
+- `monitor/...` 归档路径、version=1 JSON、发布标识 `application: "hqlab-monitor"`。
+- `HQLAB_MONITOR_TOKEN` 环境变量、浏览器现有会话 / 置顶 / 外观存储键。
+- 现有 HQLab 页面标识与 HTTP Server 标识；此次只拆分仓库，不进行界面品牌迁移。
+
+更名不要求轮换令牌、重建数据库或变更部署方的服务名称；这些变更若需要应单独规划迁移。
 
 应用不负责 SSH 连接、账户创建、sudo、linger 授权、跨账户迁移或集群卸载。这些属于使用本应用的运维工程；Ansible 是一种部署实现，不是应用的运行依赖。
 

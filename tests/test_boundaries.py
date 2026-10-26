@@ -68,7 +68,13 @@ class RuntimeBoundaryTests(unittest.TestCase):
                 ROOT,
                 project,
                 ignore=shutil.ignore_patterns(
-                    ".venv", "__pycache__", "data", "dist", "config", ".ruff_cache"
+                    ".git",
+                    ".venv",
+                    "__pycache__",
+                    "data",
+                    "dist",
+                    "config",
+                    ".ruff_cache",
                 ),
             )
             env = {
