@@ -13,16 +13,14 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .protocol import MAX_REPORT_BYTES
+from .ui import favicon, icon_bytes, parse_ui, render_page
 
 STATIC = Path(__file__).with_name("static")
 ASSETS = {
-    "/": ("index.html", "text/html; charset=utf-8"),
-    "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/appearance.js": ("appearance.js", "text/javascript; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/palettes.css": ("palettes.css", "text/css; charset=utf-8"),
-    "/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
@@ -36,7 +34,12 @@ class MonitorServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 32
 
-    def __init__(self, address, collector, token=None):
+    def __init__(self, address, collector, token=None, ui=None):
+        self.ui = parse_ui({} if ui is None else ui)
+        self.page = render_page(
+            (STATIC / "index.html").read_text(encoding="utf-8"), self.ui
+        )
+        self.icon = icon_bytes(self.ui["icon"]) if self.ui["icon"] is not None else None
         self.collector, self.store, self.token = collector, collector.store, token
         if ":" in address[0]:
             self.address_family = socket.AF_INET6
@@ -44,7 +47,7 @@ class MonitorServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HQLabMonitor/1.0"
+    server_version = "ClusterLens/1.0"
     sys_version = ""
 
     def setup(self):
@@ -122,6 +125,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.json(404, {"error": "接口不存在"})
             elif url.path == "/healthz":
                 self.json(200, {"status": "ok"})
+            elif url.path in ("/", "/index.html"):
+                self.respond(200, self.server.page, "text/html; charset=utf-8")
+            elif url.path == "/favicon.svg":
+                self.respond(200, favicon(self.server.ui), "image/svg+xml")
+            elif url.path == "/brand-icon.png" and self.server.icon is not None:
+                self.respond(200, self.server.icon, "image/png")
             elif url.path in ASSETS:
                 filename, content_type = ASSETS[url.path]
                 self.respond(200, (STATIC / filename).read_bytes(), content_type)
@@ -238,5 +247,5 @@ class Handler(BaseHTTPRequestHandler):
             200,
             ("\ufeff" + stream.getvalue()).encode(),
             "text/csv; charset=utf-8",
-            {"Content-Disposition": 'attachment; filename="hqlab-usage.csv"'},
+            {"Content-Disposition": 'attachment; filename="clusterlens-usage.csv"'},
         )

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from monitor.config import load_config
+from monitor.ui import load_ui
 
 from .configure import generate
 from .release import build
@@ -22,6 +23,9 @@ def main():
     config.add_argument("--interval", type=int)
     config.add_argument("--stale-after", type=int)
     config.add_argument("--retention-days", type=int)
+    config.add_argument(
+        "--ui", type=Path, help="UI JSON；省略时保留已有设置，空对象恢复应用默认"
+    )
     release = commands.add_parser("build", help="生成无凭据的运行发布包与单文件 agent")
     release.add_argument("--output", type=Path, default=Path("dist"))
     check = commands.add_parser(
@@ -60,6 +64,7 @@ def main():
                 interval,
                 stale,
                 retention,
+                ui=load_ui(args.ui) if args.ui else None,
             )
             print("配置已生成；保留已有令牌。未连接服务器，也未创建或移动数据库。")
     except (OSError, ValueError) as exc:

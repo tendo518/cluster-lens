@@ -12,11 +12,15 @@
   const palettes = Object.keys(paletteColors);
   const media = matchMedia("(prefers-color-scheme: dark)");
   const root = document.documentElement;
+  const defaults = {
+    theme:themes.includes(root.dataset.defaultTheme) ? root.dataset.defaultTheme : "system",
+    palette:palettes.includes(root.dataset.defaultPalette) ? root.dataset.defaultPalette : "green",
+  };
   function read() {
     try {
       const value = JSON.parse(localStorage.getItem(key) || "null");
-      return {theme:themes.includes(value?.theme) ? value.theme : "system", palette:palettes.includes(value?.palette) ? value.palette : "green"};
-    } catch {return {theme:"system", palette:"green"};}
+      return {theme:themes.includes(value?.theme) ? value.theme : defaults.theme, palette:palettes.includes(value?.palette) ? value.palette : defaults.palette};
+    } catch {return {...defaults};}
   }
   let preference = read();
   function apply() {
@@ -36,9 +40,10 @@
         const value = style.getPropertyValue(name).trim();
         return /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback;
       };
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="${color("--green", "#286b4f")}"/><path d="M19 16v32m26-32v32M19 32h26" stroke="${color("--on-accent", "#fff")}" stroke-width="7"/><rect x="39" y="26" width="12" height="12" rx="3" fill="${color("--brand-dot", "#bce79f")}"/></svg>`;
+      const mark = (root.dataset.brandMark || "C").replace(/[<>&"']/g, char => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;", "'":"&#39;"})[char]);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="${color("--green", "#286b4f")}"/><text x="32" y="44" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="40" fill="${color("--on-accent", "#fff")}">${mark}</text></svg>`;
       const favicon = document.querySelector('link[rel="icon"]');
-      if (favicon) favicon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+      if (favicon && favicon.dataset.custom !== "/brand-icon.png") favicon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
     }
   }
   apply();

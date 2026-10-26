@@ -403,7 +403,34 @@ small {
   line-height:1.1;
 }
 
+.brand-copy,.workspace-copy {
+  min-width:0;
+}
+
+.brand-name,.brand-sub,.workspace-copy strong,.workspace-copy small {
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.brand-name {
+  font-size:clamp(16px,1.5vw,23px);
+}
+
+.brand-image {
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  border-radius:inherit;
+}
+
+.brand-sub:empty,.workspace-copy small:empty {
+  display:none;
+}
+
 .brand-mark {
+  flex-shrink:0;
   width:36px;
   height:37px;
   background:var(--green);
@@ -2640,7 +2667,7 @@ dialog::backdrop {
     margin:0 0 29px;
     gap:0;
   }
-  .brand>span:last-child {
+  .brand>.brand-copy {
     display:none;
   }
   .workspace,.nav-label,.sidebar-status {

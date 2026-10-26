@@ -1,0 +1,13 @@
+{
+  "title": "Compute Center · 服务器监控",
+  "name": "Compute Center",
+  "subtitle": "OPERATIONS",
+  "mark": "C",
+  "avatar": "CC",
+  "workspace": "计算集群",
+  "workspace_subtitle": "Research computing",
+  "heading": "资源运行监控",
+  "footer": "Compute Center",
+  "theme": "system",
+  "palette": "blue"
+}

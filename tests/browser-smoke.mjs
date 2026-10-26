@@ -9,6 +9,7 @@ import {join} from "node:path";
 import {setTimeout as sleep} from "node:timers/promises";
 import {fileURLToPath} from "node:url";
 import {checkWorkspaceNavigation} from "./workspace-navigation.mjs";
+import {checkBranding} from "./branding.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const artifacts = mkdtempSync(join(tmpdir(), "hqlab-browser-"));
@@ -498,8 +499,9 @@ try {
   assert.equal(await evaluate("document.querySelector('#pinned-count').textContent"), "1");
   await cdp("Emulation.setEmulatedMedia", {features:[{name:"prefers-color-scheme", value:"dark"}, {name:"prefers-reduced-motion", value:"reduce"}]});
   assert.equal(await evaluate("getComputedStyle(document.documentElement).scrollBehavior"), "auto", "reduced motion is respected in dark mode");
+  await checkBranding({root, artifacts, python, token, cdp, evaluate, waitFor, waitOutput, setInput, screenshot});
   assert.deepEqual(exceptions, [], "no uncaught browser exceptions");
-  console.log("PASS: workspace order / native anchors / mobile offsets / scrollspy / short-page selection / layout changes / Back-Forward / keyboard focus / authenticated fragment restoration, icon-triggered appearance dropdown, keyboard / Escape / outside dismissal, saved manual/system appearance, six palettes / twelve light-dark combinations, first-paint restoration, larger responsive data text, appearance storage/sync, persistent pinned servers, keyboard/inspector pin toggles, filter isolation, storage recovery/sync, live pin status, light/dark adaptation, text/chart contrast, native controls, authentication, 8 nodes, filters, GPU inspector, time ranges, metrics, empty/offline history, per-host stats, CSV, users, 25/50/100-row pagination, global filtering, live page retention/clamping, empty-page boundaries, pause/manual refresh, network recovery, reduced motion and responsive layouts in both themes.");
+  console.log("PASS: configurable branding, PNG logos, site appearance defaults / personal overrides / first paint; workspace order / native anchors / mobile offsets / scrollspy / short-page selection / layout changes / Back-Forward / keyboard focus / authenticated fragment restoration, icon-triggered appearance dropdown, keyboard / Escape / outside dismissal, saved manual/system appearance, six palettes / twelve light-dark combinations, first-paint restoration, larger responsive data text, appearance storage/sync, persistent pinned servers, keyboard/inspector pin toggles, filter isolation, storage recovery/sync, live pin status, light/dark adaptation, text/chart contrast, native controls, authentication, 8 nodes, filters, GPU inspector, time ranges, metrics, empty/offline history, per-host stats, CSV, users, 25/50/100-row pagination, global filtering, live page retention/clamping, empty-page boundaries, pause/manual refresh, network recovery, reduced motion and responsive layouts in both themes.");
   console.log(`Screenshots and CSV: ${artifacts}`);
 } finally {
   socket?.close(); chrome?.kill("SIGTERM"); server?.kill("SIGTERM");

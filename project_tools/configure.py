@@ -7,11 +7,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from monitor.config import load_config, parse_config
+from monitor.ui import parse_ui
 
 from .files import private_write
 
 
-def generate(directory, nodes, url, interval=30, stale_after=100, retention_days=30):
+def generate(
+    directory, nodes, url, interval=30, stale_after=100, retention_days=30, ui=None
+):
     parsed = urlsplit(url)
     if (
         parsed.scheme not in ("http", "https")
@@ -63,6 +66,10 @@ def generate(directory, nodes, url, interval=30, stale_after=100, retention_days
             for node in nodes
         ],
     }
+    if ui is not None:
+        config["ui"] = parse_ui(ui)
+    elif "ui" in old:
+        config["ui"] = old["ui"]
     parse_config(config)  # Fail before replacing any existing configuration.
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     directory.chmod(0o700)

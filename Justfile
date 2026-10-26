@@ -29,3 +29,4 @@ check:
     node --check monitor/static/appearance.js
     node --check tests/browser-smoke.mjs
     node --check tests/workspace-navigation.mjs
+    node --check tests/branding.mjs

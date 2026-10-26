@@ -356,9 +356,7 @@ def send_report(config, report):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="HQLab 节点本地采集 / 单次上报（由 systemd timer 定期执行）"
-    )
+    parser = argparse.ArgumentParser(description="ClusterLens 节点本地采集 / 单次上报")
     parser.add_argument("--config", help="节点专属 JSON 配置；不指定时只打印本机快照")
     args = parser.parse_args()
     if not args.config:

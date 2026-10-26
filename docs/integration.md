@@ -1,79 +1,76 @@
-# ClusterLens 与部署工程的边界
+# 部署集成契约
 
-应用仓库为 [tendo518/cluster-lens](https://github.com/tendo518/cluster-lens)，与部署仓库分别提交和发布。私有仓库需独立授权；部署方建议使用 Git submodule 固定到已验证的提交，而不是每次部署自动拉取最新分支。普通配置生成 / 部署不应隐式调用 `git pull` 或更新引用。
+## 职责
 
-Ansible 仓库可按如下流程引用应用（初次添加由维护者执行，不是每次部署步骤）：
+ClusterLens 拥有运行包、页面、上报协议、配置校验、通用配置生成、发布工具和应用测试。部署方拥有主机发现、SSH、账户 / 权限、实际配置保管与分发、服务调度、安装卸载和数据迁移。
 
-```bash
-git submodule add https://github.com/tendo518/cluster-lens.git projects/monitor
-# 在部署仓库提交 .gitmodules 和子模块引用，其他操作者再使用：
-git submodule update --init --recursive
-```
+依赖方向只有“部署方调用应用的公开入口”。应用不读取部署仓库，不要求特定 inventory、中心主机、端口、账户、目录或服务管理器；部署方不应导入应用的内部 Python 模块。
 
-`projects/monitor` 只是部署方选择的检出路径，不是应用运行依赖。既有部署可继续使用此路径；不要为更名自动移动数据库或换发凭据。
+## 控制端 CLI
 
-## 两个独立职责
-
-**本项目拥有：**运行包、前端、上报协议、JSON 配置规则、通用配置生成、发布产物、应用测试和文档。
-
-**部署工程拥有：**主机发现 / inventory、SSH 用户和密钥、实际配置的存放与分发、账户 / 权限 / linger、用户级 service / timer、安装 / 更新 / 卸载、跨账户数据库迁移及部署测试。
-
-依赖方向为“部署工程调用本项目的公开工具与运行接口”，而不是应用导入部署代码。应用模型仅包含公开节点信息；任何 SSH 变量留在部署工程，不能通过共享模型夹带进中心。
-
-## 本地工具接口
-
-部署方在本项目根目录、使用 Python 3.9+ 调用以下稳定入口；无需安装本项目到控制端虚拟环境：
+使用 Python 3.9+，在应用根目录调用；不需要安装应用包或第三方依赖：
 
 ```bash
-python3 -B -S -m project_tools build --output /absolute/path/to/staging
+python3 -B -S -m project_tools build --output /absolute/staging
 python3 -B -S -m project_tools configure \
-  --nodes /absolute/path/to/public-nodes.json \
+  --nodes /absolute/nodes.json \
   --url https://monitor.example.org/api/agent/report \
-  --output /absolute/path/to/private-config \
+  --ui /absolute/site-ui.json \
+  --output /absolute/private-config \
   --interval 30 --stale-after 100 --retention-days 30
-python3 -B -S -m project_tools check-config /absolute/path/to/private-config/server.json
+python3 -B -S -m project_tools check-config /absolute/private-config/server.json
 ```
 
-输入 / 输出路径若来自不同工作目录，应使用绝对路径。`build`、`configure` 和 `check-config` 都不连接节点；成功退出码 0，失败非零。标准输出仅报告状态，**不输出凭据**。节点 JSON 与输出配置格式见 [配置契约](configuration.md)。
+三条命令均不连接节点。成功退出码为 0，失败非零；状态输出不包含凭据。路径跨工作目录时使用绝对路径。输入及优先级见[配置参考](configuration.md)。
 
-配置目录可由部署工程保管在自己的工作区，不必放进 monitor 项目。应用工具不关心 inventory 文件、运维仓库名称或集群主机命名。不要在同一输出目录并发运行两个配置生成 / 部署任务；这些操作不是跨文件或跨节点事务。
+部署方只传公开节点信息与应用配置，SSH 变量不进入应用模型。UI schema 及 icon_file 的处理属于应用；部署方只提供配置文件路径，不重复实现校验或 HTML 替换。
 
-## 发布产物契约（format_version=1）
-
-`build` 生成：
+## 发布产物
 
 | 产物 | 内容 |
 | --- | --- |
-| `server.tar.gz` | 归档路径全部位于 `monitor/`；只含运行 `.py` 和允许的静态资源 |
-| `agent.py` | Python 3.6+ 单文件采集 / 上报脚本，可独立复制到节点 |
-| `release.json` | `format_version: 1`、`application: "hqlab-monitor"`，以及 `files` 中两个产物各自的 `sha256` |
+| `server.tar.gz` | `monitor/` 下的运行 Python 与静态资源 |
+| `agent.py` | Python 3.6+ 独立采集 / 上报脚本 |
+| `release.json` | 格式版本、发行标识、两个产物的 SHA-256 |
 
-发布包排序、归档元数据和压缩时间戳固定，可重复构建。包内没有其他项目、配置、令牌、数据库、项目工具、测试或部署代码。SHA-256 用于一致性校验，**不是来源签名**；源代码和产物来源必须可信。
+清单结构：
 
-部署方消费产物时验证版本和校验和，不再扫描应用内部源码目录。以后即使采集器源码位置改变，只要 `agent.py` 产物契约不变，部署模板无需改动。
-
-中心解压后的入口保持为：
-
-```bash
-python3 -m monitor --config /absolute/path/to/server.json \
-  --host 0.0.0.0 --port 8080 --db /absolute/path/to/monitor.sqlite3
+```json
+{
+  "format_version": 1,
+  "application": "hqlab-monitor",
+  "files": {
+    "server.tar.gz": {"sha256": "<64 hex characters>"},
+    "agent.py": {"sha256": "<64 hex characters>"}
+  }
+}
 ```
 
-当前工作目录应是解压根目录；有外部节点接入前先完成 HTTPS / 防火墙配置。每个 agent 使用：
+`application` 是稳定的机器可读发行标识，不控制页面品牌。归档排序、元数据及压缩时间戳固定，可以重复构建；产物中没有配置、凭据、数据库、测试、项目工具或部署代码。SHA-256 证明内容一致，不是来源签名，部署方必须信任源码 / 产物来源。
+
+部署模板消费这三个产物，不扫描应用源码位置。中心从解压根目录启动：
 
 ```bash
-python3 /absolute/path/to/agent.py --config /absolute/path/to/agent.json
+python3 -m monitor --config /absolute/server.json \
+  --host 0.0.0.0 --port 8080 --db /absolute/history.sqlite3
 ```
 
-## Ansible 集成建议
+采集端执行 `python3 /absolute/agent.py --config /absolute/agent.json`。中心 / agent 均使用普通用户权限；服务管理器、超时、调度间隔和 linger 由部署方配置。
 
-1. 控制端通过 `ansible-inventory` 解析选定主机，转换为公开 `name/address/groups` JSON，不发送 SSH 变量。
-2. 调用 `build`，核对 `release.json`；调用 `configure`，保留既有凭据目录。
-3. 限定目标范围并确认实际运行账户，先安装 / 校验中心，再启用新节点 agent。
-4. 使用普通用户的 systemd 服务和 timer + linger；首次创建用户或迁移历史是单独的显式管理员操作，不在更新代码时自动执行。
-5. 中心成功鉴权就绪后，验证节点完成一次实际上报，而非仅检查 timer 已启用。
-6. 日常清理只移除可重建发布包和临时安装器，保留实际配置和历史。
+## 推荐部署顺序
 
-不要把整个私密配置目录或 SSH 私钥下发给中心 / 每个 agent，不按端口杀其他进程，不因不可达而从清单静默移除节点，不擅自切换运行账户。
+1. 获取并固定可信的应用版本；部署期间不隐式拉取最新分支。
+2. 导出公开节点清单，构建并检查清单版本及 SHA-256。
+3. 在受保护的持久配置目录生成配置，保留既有令牌。
+4. 先更新中心并验证 viewer 鉴权，再启动新增节点的 agent。
+5. 每个节点仅接收自己的配置；中心接收完整中心配置。
+6. 验证 agent 实际完成一次上报，并检查实时状态与历史。
+7. 清理可重建发布包和临时安装器，保留配置、令牌及数据库。
 
-应用不规定某个实验室的 inventory 路径、中心主机、端口、用户名、UID/GID、数据库存放策略或 sudo 策略。这些设置应出现在部署工程，而非本项目。
+不要并发操作同一配置输出目录；生成、安装和多节点更新不是跨文件 / 跨节点事务。失败后应按节点检查结果，不能假定自动回滚。
+
+## 源码引用与版本维护
+
+应用可以独立 checkout，也可作为部署工程的 Git submodule。私有仓库需额外读取权限。父仓库应固定已验证提交；应用改动先在应用仓库提交并推送，再更新部署方引用。直接使用外部工作区时，部署方自行记录并验证版本。
+
+配置与历史不是构建缓存。更新源码不应自动移动数据库、轮换令牌、切换账户、调整时钟或删除不可达节点。跨账户迁移需另外授权、保留源库并使用 SQLite backup 正确处理 WAL；不要只复制正在使用的主数据库文件。

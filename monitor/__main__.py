@@ -14,13 +14,14 @@ from .config import load_config, valid_token
 from .paths import ROOT
 from .server import MonitorServer
 from .store import Store
+from .ui import load_ui, parse_ui
 
 LOG = logging.getLogger(__name__)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="HQLab Web 监控中心（接收各节点脚本上报，不通过 SSH 采集）"
+        description="ClusterLens 监控中心（接收节点上报，不通过 SSH 采集）"
     )
     parser.add_argument(
         "--host", default="127.0.0.1", help="HTTP 监听地址；部署时使用 0.0.0.0"
@@ -36,6 +37,9 @@ def main():
     )
     parser.add_argument("--retention-days", type=int, help="覆盖历史保留天数（1—365）")
     parser.add_argument("--db", type=Path, help="SQLite 文件路径")
+    parser.add_argument(
+        "--ui", type=Path, help="UI JSON 文件；覆盖中心配置的 ui，亦可用于演示"
+    )
     parser.add_argument(
         "--demo",
         action="store_true",
@@ -59,6 +63,7 @@ def main():
                 "Web 服务需要 SQLite 3.25+，请使用较新的 Python / SQLite 运行时"
             )
         credentials = {}
+        config = {}
         if args.demo:
             from .demo import demo_hosts, seed_demo
 
@@ -72,6 +77,7 @@ def main():
             stale_after = config.get("stale_after", 100)
             retention = config.get("retention_days", 30)
             token = config["viewer_token"]
+        ui = load_ui(args.ui) if args.ui else parse_ui(config.get("ui", {}))
         retention = args.retention_days or retention
         token = os.environ.get("HQLAB_MONITOR_TOKEN") or token
         try:
@@ -104,7 +110,7 @@ def main():
             demo=args.demo,
             credentials=credentials,
         )
-        server = MonitorServer((args.host, args.port), collector, token)
+        server = MonitorServer((args.host, args.port), collector, token, ui=ui)
     except (ValueError, OSError, sqlite3.Error) as exc:
         parser.exit(1, f"启动失败：{exc}\n请检查 --config 指定的配置及运行环境。\n")
     address, port = server.server_address[:2]

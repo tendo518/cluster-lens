@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from .models import Host
+from .ui import parse_ui
 
 
 def valid_token(value):
@@ -29,6 +30,7 @@ def parse_config(config):
     """Validate the public version=1 configuration without filesystem side effects."""
     if not isinstance(config, dict) or config.get("version") != 1:
         raise ValueError("监控配置必须是 version=1 的 JSON 对象")
+    parse_ui(config.get("ui", {}))
     interval = config.get("interval", 30)
     stale = config.get("stale_after", 100)
     retention = config.get("retention_days", 30)

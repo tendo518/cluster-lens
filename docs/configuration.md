@@ -1,90 +1,137 @@
-# 运行配置契约（version=1）
+# 配置参考
 
-应用只认识 JSON 配置，不读取 inventory、SSH 用户、端口、私钥或部署目录。配置生成入口为：
+ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不搜索父目录，也不推断部署账户或数据库位置。除 CLI 特别说明外，路径相对于当前工作目录；跨工程调用建议使用绝对路径。
+
+## 1. 生成配置
+
+公开节点清单为非空 JSON 数组：
+
+```json
+[
+  {"name": "node-a", "address": "192.0.2.11", "groups": ["compute"]},
+  {"name": "node-b", "address": "192.0.2.12", "groups": ["compute"]}
+]
+```
+
+地址是展示信息，不是 SSH 采集目标。每项仅接受 `name`、`address`、`groups`；名称使用 1—128 个字母、数字、点、横线或下划线，不能为 `.` / `..`，必须唯一。地址长度为 1—255；groups 是字符串数组，可省略。
 
 ```bash
 python3 -m project_tools configure --nodes examples/nodes.json \
-  --url http://127.0.0.1:8080/api/agent/report --output config/local
+  --url https://monitor.example.org/api/agent/report \
+  --ui examples/ui.json --output config/local \
+  --interval 30 --stale-after 100 --retention-days 30
 ```
 
-`--nodes` 是非空 JSON 数组，每项仅允许 `name`、`address`、可选 `groups`：
-
-- `name`：稳定的节点标识，用于报告鉴权、历史关联及 agent 配置文件名；生成器要求 1—128 个字母、数字、点、横线或下划线，不能为 `.` / `..`，不能重复。
-- `address`：公开展示信息，1—255 个字符；**不作为中心 SSH 采集目标**。
-- `groups`：字符串数组，默认空。无需采用任何 Ansible 分组规则。
-- 不接受令牌、私钥、SSH 变量等额外字段。生成器负责产生独立令牌，不从节点输入复制凭据。
-
-## 输出与分发
-
-| 文件 | 接收方 / 用途 |
+| 输出 | 分发范围 |
 | --- | --- |
-| `server.json` | 只给中心，含全部节点上报令牌及 viewer 令牌 |
-| `agents/<name>.json` | 只给对应节点，不能把整个目录分发给所有节点 |
-| `viewer-token` | 只给授权网页查看者，不放入 URL 或公开产物 |
+| `server.json` | 仅中心，包含全部节点令牌与 viewer 令牌 |
+| `agents/<name>.json` | 仅对应节点 |
+| `viewer-token` | 仅授权查看者 |
 
-所有文件均属于私密配置。不要提交到版本库，不要打印或附在部署日志中。重复生成保留已有 viewer 及同名节点令牌，新增节点获得新令牌；删除节点只删除本地对应 agent 配置，**不卸载远端服务，也不删除历史**。
+目录权限为 `0700`、文件为 `0600`，均不得入库或打印到共享日志。生成器不连接服务器、不修改数据库、不卸载远端节点。重复生成保留 viewer / 同名节点令牌；新增节点产生新令牌，移除节点会移除本地对应配置。不要并发生成同一目录。
 
-保留原配置目录，修改输入清单后再生成。先让中心接受新的节点身份，再启动新 agent。不要用删除配置的方式“清理缓存”；删除后重新生成会轮换凭据，旧 agent 随即无法鉴权。
+### 生成优先级
 
-## 中心 JSON
+- 采样 / 保留参数：显式 CLI → 现有 `server.json` → 默认值。
+- `--url` 每次必须明确提供。
+- `--ui`：提供文件时，按文件内容与应用默认值生成完整 UI；省略时保留现有 UI。传入内容为 `{}` 的 UI 文件可恢复默认展示。
+- 改变 interval 且未指定 stale-after 时，自动提高离线阈值到至少 `3 × interval + 10`。
+- 输入或现有凭据无效时拒绝替换，不静默轮换令牌。
 
-生成器维护以下字段；下面只描述结构，不提供可误用于生产的固定令牌：
+## 2. 中心运行配置
 
-| 字段 | 说明 |
+`server.json` 是 `version=1` 对象：
+
+| 字段 | 要求 / 默认值 |
 | --- | --- |
 | `version` | `1` |
-| `interval` | 5—3600 秒，默认 30 |
-| `stale_after` | 至少 30 秒且至少两倍 interval，最大 86400；首次默认至少 `3 × interval + 10` |
-| `retention_days` | 1—365 天，默认 30 |
-| `viewer_token` | 16—256 位无空白的可打印 ASCII 字符，由安全随机生成器生成 |
-| `hosts` | 非空节点列表，每项含 `name`、`address`、`groups`、`agent_token` |
+| `interval` | 整数 5—3600 秒；默认 30 |
+| `stale_after` | 整数，至少 30 秒且不少于两倍 interval；最大 86400；默认 100 |
+| `retention_days` | 整数 1—365 天；默认 30 |
+| `viewer_token` | 16—256 位无空白可打印 ASCII；生成器使用安全随机值 |
+| `hosts` | 非空列表，含公开节点字段与逐节点 `agent_token` |
+| `ui` | 可选公开展示对象，省略字段使用下表默认值 |
 
-所有 agent 令牌必须彼此不同，并与 viewer 令牌不同。现有配置无效时拒绝覆盖，不静默重置凭据。可用 `python3 -m project_tools check-config /path/to/server.json` 只校验配置；成功退出码 0，失败非零，不启动服务或修改数据库。
+所有 agent 令牌必须彼此不同，并与 viewer 令牌不同。
 
 ```bash
-python3 -m project_tools configure --nodes examples/nodes.json \
-  --url http://127.0.0.1:8080/api/agent/report --output config/local \
-  --interval 60 --stale-after 190 --retention-days 90
+python3 -m project_tools check-config /path/to/server.json
+python3 -m monitor --config /path/to/server.json \
+  --host 127.0.0.1 --port 8080 --db /path/to/history.sqlite3
 ```
 
-再次运行时，未显式指定的参数从原 `server.json` 恢复；`--url` 每次必须明确给出。改变 interval 且未指定离线阈值时，会按新周期提高阈值。
+监听地址、端口和数据库路径属于启动参数，不是 server.json 字段。默认只监听本机；非本机监听必须有有效访问令牌。环境变量 `HQLAB_MONITOR_TOKEN` 可覆盖 viewer 令牌，服务部署应避免意外继承它。演示和真实模式禁止共用数据库；应用不自动迁移、合并或清理其他数据库。
 
-中心启动示例：
+## 3. UI 配置
 
-```bash
-python3 -m monitor --config config/local/server.json \
-  --host 127.0.0.1 --port 8080 --db data/monitor.sqlite3
+UI 文件是单独的 JSON 对象；也可以直接将同样的运行字段写入中心配置的 `ui`。它是公开信息，登录前即可看到，不能存放令牌或内部秘密。
+
+| 字段 | 默认值 | 最大长度 |
+| --- | --- | --- |
+| `title` | `ClusterLens · 服务器监控` | 120 |
+| `name` | `ClusterLens` | 40 |
+| `subtitle` | `SERVER MONITORING` | 60，可为空 |
+| `mark` | `C` | 2 |
+| `avatar` | `CL` | 3 |
+| `workspace` | `服务器集群` | 60 |
+| `workspace_subtitle` | `Monitoring workspace` | 80，可为空 |
+| `heading` | `集群运行监控` | 80 |
+| `footer` | `ClusterLens` | 120，可为空 |
+| `theme` | `system` | `system` / `light` / `dark` |
+| `palette` | `green` | `green` / `blue` / `purple` / `amber` / `teal` / `rose` |
+| `icon` | `null` | PNG data URI，见下文 |
+
+文本禁止控制字符；未知字段、无效主题 / 图标直接报错。文本按纯文本转义，不作为 HTML 执行。长品牌名称会截断展示，完整名称保留在链接的可访问名称和提示中。
+
+### 图标
+
+默认使用 `mark` 生成随主题变化的字母图标。自定义图标需为 PNG，文件大小不超过 64 KiB、宽高各为 1—1024 像素：
+
+```json
+{
+  "title": "Compute Center · 服务器监控",
+  "name": "Compute Center",
+  "mark": "C",
+  "icon_file": "logo.png",
+  "palette": "blue"
+}
 ```
 
-- `--host` / `--port` / `--db` 是启动参数，不是配置文件字段；正式运行建议使用数据库绝对路径。
-- 默认只监听本机。跨机器部署需正确设置监听地址、防火墙和 agent 上报 URL。
-- `HQLAB_MONITOR_TOKEN` 若设置，会覆盖配置中的 viewer 令牌。部署服务应清除意外继承的此变量；不能与 agent 令牌相同。
-- 数据库路径不会从其他项目或用户账户自动推断、迁移、合并或覆盖。演示与真实模式禁止共用数据库。
+`icon_file` 仅用于 UI **输入文件**，相对于该 UI 文件解析。工具会把 PNG 编码为 `icon: "data:image/png;base64,..."` 写入生成的中心配置；`icon` 与 `icon_file` 不能同时提供。生成后不需要在中心保留输入文件或原始图片。
 
-## Agent JSON 与执行
+自定义 PNG 同时用于侧栏、登录标记与 favicon，切换配色不会替换图片。页脚和头像使用 `mark` / `avatar` 文本。运行配置仅接受内嵌 PNG，不接受 icon_file、外部 URL 或自定义 SVG；服务端只公开受限图像端点，不暴露任意文件读取能力。
 
-字段为 `version=1`、`host`、`url`、`token`、`interval`、`timeout`，可选 `ca_file` 用于 TLS 自定义 CA。`host` 必须精确匹配中心节点名，`token` 为此节点独有令牌。生成器默认 timeout 为 8 秒。
-
-`url` 必须为 HTTP(S) 完整上报端点 `/api/agent/report`，不得包含用户名、密码、查询参数或片段。节点忽略代理环境变量、不跟随重定向，HTTPS 校验证书；不提供关闭 TLS 验证的选项。
+### 运行时与浏览器优先级
 
 ```bash
-# 源码形式：只在本机执行，不使用 SSH 获取其他节点信息
-python3 monitor/remote_probe.py
-python3 monitor/remote_probe.py --config config/local/agents/node-a.json
+python3 -m monitor --demo --ui examples/ui.json
+```
 
-# 发布形式（由部署方分发 dist/agent.py 和该节点配置）
+运行参数 `--ui` → 中心配置 `ui` → 应用默认值。`--ui` 对整份 UI 使用替换语义，不与 server.json.ui 逐字段合并。站点文字、默认主题和配色在 HTML 首次响应中生效，无需等待鉴权或额外配置请求。
+
+明暗 / 配色的最终优先级为：浏览器已保存的有效偏好 → 站点配置 → 应用默认值。自动主题跟随系统；损坏、被清除或无法读取的偏好回落到站点默认。管理员修改默认值不会覆盖用户的个人选择。
+
+## 4. 采集端配置
+
+独立 agent 使用 `version=1`、`host`、`url`、`token`、`interval`、`timeout`；可选 `ca_file` 指定自定义 TLS CA 文件。interval 为 5—3600 秒，timeout 为 1—30 秒、默认 8。host 必须精确匹配中心名称，token 仅属于该节点。
+
+```bash
 python3 /path/to/agent.py --config /path/to/agent.json
 ```
 
-不带参数仅打印本机诊断；带配置时只采集 / 上报一次。请勿在生产节点反复执行演示配置或把 viewer 令牌当成 agent 令牌。正式常驻调度使用普通用户 systemd service / timer + linger，由部署工程配置；需要保证间隔与中心一致、禁止重叠、设置超时，退出后不积压旧报告。
+不带配置执行采集器只打印本机诊断；带配置执行一次采集 / 上报后退出。周期调度由部署方负责，需禁止重叠、限制总运行时间，不积压旧报告。
 
-## 接口与安全边界
+URL 必须是 HTTP(S) 完整 `/api/agent/report` 端点，不含用户名、密码、查询或片段。agent 忽略代理环境变量、拒绝重定向、校验 TLS；不支持关闭证书校验。多机部署前请检查路由、时钟和证书。
 
-- `POST /api/agent/report`：逐节点独立 Bearer 令牌，只能上报自身身份。
-- `GET /api/overview`、`GET /api/history`、`GET /api/export.csv`：viewer 令牌。
-- `GET /healthz`：最小健康检查，不泄露节点、指标或凭据；返回成功不等于 agent 已成功上报。
-- 静态页面允许未登录加载，真实指标需要鉴权。网页不提供主机管理、进程终止或远端命令执行接口。
-- HTTP 仅用于可信内网；其他网络应使用 HTTPS 反向代理和访问控制。系统不是公网账户 / 抗滥用平台。
-- 节点与中心应保持 NTP / chrony 同步。拒绝过旧、未来和乱序报告，不改系统时钟、不通过放宽校验掩盖故障。
+## 5. HTTP 接口
 
-具体时效、统计权重、缺失数据和进程采集口径见 [使用说明](user-guide.md)。
+| 接口 | 鉴权与用途 |
+| --- | --- |
+| `POST /api/agent/report` | 逐节点 Bearer，只能上报自身身份 |
+| `GET /api/overview` | viewer Bearer，实时状态 |
+| `GET /api/history` | viewer Bearer，历史 / 统计 |
+| `GET /api/export.csv` | viewer Bearer，导出统计 |
+| `GET /healthz` | 无鉴权，仅最小存活信息 |
+| 页面、静态资源、站点图标 | 无鉴权，不包含真实指标或令牌 |
+
+健康检查成功不代表节点上报成功。HTTP 仅适合可信内网，其他网络需 HTTPS、访问限制与防火墙。统计和采样定义见[使用指南](user-guide.md)。
