@@ -10,7 +10,9 @@
 | 采集端 | Linux、Python 3.6+；GPU 指标需要 `nvidia-smi` |
 | 浏览器测试 | Node.js 22+、Chrome / Chromium |
 
-中心与采集端仅使用 Python 标准库；前端是原生 JS / CSS / SVG，无需 pip、Node 构建或第三方运行依赖。本项目以源码和运行归档发行，不提供 `pip install .` 安装方式。
+当前版本的中心与采集端仅使用 Python 标准库；前端是原生 JS / CSS / SVG，无需 pip、Node 构建或第三方运行依赖。本项目以源码和运行归档发行，不提供 `pip install .` 安装方式。
+
+纯标准库是节点 agent 的约束，不是中心的长期限制。后续框架、模块化与发布方式的改进见[架构演进计划](docs/architecture-plan.md)；计划尚未实施，不改变本页的当前运行方式。
 
 以下命令在应用仓库根目录执行。
 
