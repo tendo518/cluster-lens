@@ -79,7 +79,7 @@ def main():
             token = config["viewer_token"]
         ui = load_ui(args.ui) if args.ui else parse_ui(config.get("ui", {}))
         retention = args.retention_days or retention
-        token = os.environ.get("HQLAB_MONITOR_TOKEN") or token
+        token = os.environ.get("CLUSTERLENS_VIEWER_TOKEN") or token
         try:
             local = (
                 args.host == "localhost" or ipaddress.ip_address(args.host).is_loopback
@@ -87,10 +87,12 @@ def main():
         except ValueError:
             local = False
         if not local and not token:
-            parser.error("非本机监听必须设置 HQLAB_MONITOR_TOKEN 或配置 viewer_token")
+            parser.error(
+                "非本机监听必须设置 CLUSTERLENS_VIEWER_TOKEN 或配置 viewer_token"
+            )
         if token and not valid_token(token):
             parser.error(
-                "HQLAB_MONITOR_TOKEN / viewer_token 必须是至少 16 位无空白的可打印 ASCII 令牌"
+                "CLUSTERLENS_VIEWER_TOKEN / viewer_token 必须是至少 16 位无空白的可打印 ASCII 令牌"
             )
         if token in credentials.values():
             parser.error("网页访问令牌不能与节点上报令牌相同")

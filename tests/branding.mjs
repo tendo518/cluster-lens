@@ -12,7 +12,7 @@ export async function checkBranding({root, artifacts, python, token, cdp, evalua
   const ui = {title:'Research <Team> · Monitor', name:'Research computing operations center', subtitle:'OPERATIONS', mark:'R', avatar:'RT', workspace:'Research cluster', workspace_subtitle:'Independent site', heading:'Resource monitoring', footer:'Research <Team>', theme:'dark', palette:'purple'};
   for (const customIcon of [false, true]) {
     writeFileSync(uiFile, JSON.stringify({...ui, ...(customIcon ? {icon_file:"logo.png"} : {})}));
-    const child = spawn(python, ["-B", "-S", "-m", "monitor", "--demo", "--port", "0", "--db", join(artifacts, `brand-${customIcon}.sqlite3`), "--ui", uiFile], {cwd:root, env:{...process.env, HQLAB_MONITOR_TOKEN:token}, stdio:["ignore", "pipe", "pipe"]});
+    const child = spawn(python, ["-B", "-S", "-m", "monitor", "--demo", "--port", "0", "--db", join(artifacts, `brand-${customIcon}.sqlite3`), "--ui", uiFile], {cwd:root, env:{...process.env, CLUSTERLENS_VIEWER_TOKEN:token}, stdio:["ignore", "pipe", "pipe"]});
     let firstPaint;
     try {
       const base = await waitOutput(child, /(http:\/\/127\.0\.0\.1:\d+)/, "branded demo");

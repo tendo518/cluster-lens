@@ -436,7 +436,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 405)
 
     def test_public_bind_requires_token(self):
-        env = {k: v for k, v in os.environ.items() if k != "HQLAB_MONITOR_TOKEN"}
+        env = {k: v for k, v in os.environ.items() if k != "CLUSTERLENS_VIEWER_TOKEN"}
         result = subprocess.run(
             [sys.executable, "-m", "monitor", "--demo", "--host", "0.0.0.0"],
             capture_output=True,
@@ -446,7 +446,7 @@ class HTTPTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 2)
-        self.assertIn("HQLAB_MONITOR_TOKEN", result.stderr)
+        self.assertIn("CLUSTERLENS_VIEWER_TOKEN", result.stderr)
 
 
 if __name__ == "__main__":

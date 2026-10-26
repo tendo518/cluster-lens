@@ -31,7 +31,7 @@ function waitOutput(child, regex, label) {
   });
 }
 try {
-  server = spawn(python, ["-m", "monitor", "--demo", "--port", "0", "--db", join(artifacts, "demo.sqlite3"), "--config", "/DOES-NOT-EXIST"], {cwd:root, env:{...process.env, HQLAB_MONITOR_TOKEN:token}, stdio:["ignore", "pipe", "pipe"]});
+  server = spawn(python, ["-m", "monitor", "--demo", "--port", "0", "--db", join(artifacts, "demo.sqlite3"), "--config", "/DOES-NOT-EXIST"], {cwd:root, env:{...process.env, CLUSTERLENS_VIEWER_TOKEN:token}, stdio:["ignore", "pipe", "pipe"]});
   const base = await waitOutput(server, /(http:\/\/127\.0\.0\.1:\d+)/, "demo server");
   chrome = spawn(process.env.CHROME || "google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--no-proxy-server", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${join(artifacts, "chrome-profile")}`, "about:blank"], {stdio:["ignore", "pipe", "pipe"]});
   const debuggerURL = await waitOutput(chrome, /DevTools listening on (ws:\/\/[^\s]+)/, "Chrome");

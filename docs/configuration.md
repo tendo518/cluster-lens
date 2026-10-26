@@ -60,7 +60,7 @@ python3 -m monitor --config /path/to/server.json \
   --host 127.0.0.1 --port 8080 --db /path/to/history.sqlite3
 ```
 
-监听地址、端口和数据库路径属于启动参数，不是 server.json 字段。默认只监听本机；非本机监听必须有有效访问令牌。环境变量 `HQLAB_MONITOR_TOKEN` 可覆盖 viewer 令牌，服务部署应避免意外继承它。演示和真实模式禁止共用数据库；应用不自动迁移、合并或清理其他数据库。
+监听地址、端口和数据库路径属于启动参数，不是 server.json 字段。默认只监听本机；非本机监听必须有有效访问令牌。环境变量 `CLUSTERLENS_VIEWER_TOKEN` 可覆盖 viewer 令牌，服务部署应避免意外继承它。演示和真实模式禁止共用数据库；应用不自动迁移、合并或清理其他数据库。
 
 ## 3. UI 配置
 
