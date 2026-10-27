@@ -66,10 +66,14 @@ CPU、网络和块 I/O 使用约 250ms 差分；内存采用 MemAvailable；磁�
 
 | 浏览器存储 | 内容 |
 | --- | --- |
-| `sessionStorage["hqlab-monitor-token"]` | 当前标签页的 viewer 令牌 |
+| `localStorage["hqlab-monitor-token"]` | 持久保存的 viewer 令牌 |
 | `localStorage["hqlab-monitor-pinned-hosts"]` | 置顶节点名 |
 | `localStorage["hqlab-monitor-appearance"]` | 明暗 / 配色偏好 |
 
-置顶与外观可在同源标签页同步；它们不包含令牌。令牌只通过 Authorization 传输，不写 URL、cookie 或 localStorage；页面不提供密码管理器保存功能。清除站点数据会丢失本地偏好。
+登录验证成功后，viewer 令牌保存在 localStorage，关闭标签页或重启浏览器后仍可使用。同一来源的标签页共享登录 / 退出状态；来源包括协议、主机和端口，换地址后需重新登录。旧 sessionStorage 中的令牌会在验证成功后迁移，迁移前遇到网络错误不会丢弃。浏览器禁止持久存储时会退回当前会话，登录时提示无法持久保存。
+
+右上角“退出登录”会清除本地和旧会话令牌并重新加载页面，保留外观与置顶。API 返回 401 时清除失效令牌；网络错误或服务端暂时失败不清除。清除站点数据也会清除登录与偏好。
+
+令牌只通过 Authorization 传输，不写 URL 或 cookie。localStorage 可被同源 JavaScript 读取，同一浏览器配置的使用者也可能继续访问，适合可信内网的简单访问限制；共享设备使用后应退出，非可信网络仍需 HTTPS 和更完整的访问控制。页面未单独提供密码管理器保存功能。
 
 页面、图标和品牌在鉴权前公开，不应配置敏感信息。真实指标需要 viewer 鉴权；agent 令牌彼此隔离。HTTP 仅适用于可信内网，其他网络需要部署方提供 HTTPS、访问限制和防火墙。

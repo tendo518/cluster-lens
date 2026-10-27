@@ -30,3 +30,4 @@ check:
     node --check tests/browser-smoke.mjs
     node --check tests/workspace-navigation.mjs
     node --check tests/branding.mjs
+    node --check tests/authentication.mjs

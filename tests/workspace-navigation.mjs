@@ -105,7 +105,7 @@ export async function checkWorkspaceNavigation({cdp, evaluate, click, setInput, 
   // the position of the much shorter loading skeleton.
   await viewport(390);
   await navigate("servers");
-  await evaluate("sessionStorage.removeItem('hqlab-monitor-token')");
+  await evaluate("localStorage.removeItem('hqlab-monitor-token');sessionStorage.removeItem('hqlab-monitor-token')");
   const oldOrigin = await evaluate("performance.timeOrigin");
   await cdp("Page.reload"); await sleep(300);
   await waitFor(`performance.timeOrigin!==${oldOrigin} && document.querySelector('#auth-dialog')?.open`, "fragment opens behind authentication");

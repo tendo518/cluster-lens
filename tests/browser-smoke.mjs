@@ -10,6 +10,7 @@ import {setTimeout as sleep} from "node:timers/promises";
 import {fileURLToPath} from "node:url";
 import {checkWorkspaceNavigation} from "./workspace-navigation.mjs";
 import {checkBranding} from "./branding.mjs";
+import {checkAuthentication} from "./authentication.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const artifacts = mkdtempSync(join(tmpdir(), "hqlab-browser-"));
@@ -138,6 +139,7 @@ try {
   await waitFor("document.querySelector('#auth-dialog')?.open", "authentication dialog");
   await setInput("#access-token", "wrong-token"); await evaluate("document.querySelector('#auth-form').requestSubmit()");
   await waitFor("!document.querySelector('#auth-error').hidden", "invalid-token error");
+  assert.equal(await evaluate("localStorage.getItem('hqlab-monitor-token')"), null, "invalid login is not persisted");
   for (const scheme of ["dark", "light"]) {
     await setScheme(scheme); await checkAppearance(scheme, `${scheme} authentication`);
     await screenshot(`auth-${scheme}.png`);
@@ -147,6 +149,7 @@ try {
   assert.equal(await evaluate("document.querySelector('#demo-banner').hidden"), false);
   assert.match(await evaluate("document.querySelector('#summary').textContent"), /7\s*\/ 8 台/);
   assert.equal(await evaluate("document.querySelectorAll('#usage-rows tr').length"), 8);
+  await checkAuthentication({base, cdp, evaluate, click, setInput, waitFor, token});
   await screenshot("desktop.png");
   await click("#auto-refresh");
   assert.match(await evaluate("document.querySelector('#live-badge').textContent"), /暂停/);
@@ -209,7 +212,7 @@ try {
 
   const originTime = await evaluate("performance.timeOrigin");
   await cdp("Page.reload"); await sleep(300);
-  await waitFor(`performance.timeOrigin!==${originTime} && document.querySelectorAll('#node-grid .node-card').length===8 && document.querySelectorAll('#pinned-grid .node-card').length===1 && !!document.querySelector('.chart-primary')`, "pins and session authentication survive reload");
+  await waitFor(`performance.timeOrigin!==${originTime} && document.querySelectorAll('#node-grid .node-card').length===8 && document.querySelectorAll('#pinned-grid .node-card').length===1 && !!document.querySelector('.chart-primary')`, "pins and persistent authentication survive reload");
   assert.equal(await evaluate("document.querySelector('#auth-dialog').open"), false);
   assert.deepEqual(await evaluate("state.pinned"), [priorityHost]);
   await click("#auto-refresh");
@@ -501,7 +504,7 @@ try {
   assert.equal(await evaluate("getComputedStyle(document.documentElement).scrollBehavior"), "auto", "reduced motion is respected in dark mode");
   await checkBranding({root, artifacts, python, token, cdp, evaluate, waitFor, waitOutput, setInput, screenshot});
   assert.deepEqual(exceptions, [], "no uncaught browser exceptions");
-  console.log("PASS: configurable branding, PNG logos, site appearance defaults / personal overrides / first paint; workspace order / native anchors / mobile offsets / scrollspy / short-page selection / layout changes / Back-Forward / keyboard focus / authenticated fragment restoration, icon-triggered appearance dropdown, keyboard / Escape / outside dismissal, saved manual/system appearance, six palettes / twelve light-dark combinations, first-paint restoration, larger responsive data text, appearance storage/sync, persistent pinned servers, keyboard/inspector pin toggles, filter isolation, storage recovery/sync, live pin status, light/dark adaptation, text/chart contrast, native controls, authentication, 8 nodes, filters, GPU inspector, time ranges, metrics, empty/offline history, per-host stats, CSV, users, 25/50/100-row pagination, global filtering, live page retention/clamping, empty-page boundaries, pause/manual refresh, network recovery, reduced motion and responsive layouts in both themes.");
+  console.log("PASS: configurable branding, PNG logos, site appearance defaults / personal overrides / first paint; workspace order / native anchors / mobile offsets / scrollspy / short-page selection / layout changes / Back-Forward / keyboard focus / authenticated fragment restoration, icon-triggered appearance dropdown, keyboard / Escape / outside dismissal, saved manual/system appearance, six palettes / twelve light-dark combinations, first-paint restoration, larger responsive data text, appearance storage/sync, persistent pinned servers, keyboard/inspector pin toggles, filter isolation, storage recovery/sync, live pin status, light/dark adaptation, text/chart contrast, native controls, persistent authentication / legacy migration / independent tabs / logout synchronization / 401 cleanup / network and storage recovery / stale-response isolation, 8 nodes, filters, GPU inspector, time ranges, metrics, empty/offline history, per-host stats, CSV, users, 25/50/100-row pagination, global filtering, live page retention/clamping, empty-page boundaries, pause/manual refresh, network recovery, reduced motion and responsive layouts in both themes.");
   console.log(`Screenshots and CSV: ${artifacts}`);
 } finally {
   socket?.close(); chrome?.kill("SIGTERM"); server?.kill("SIGTERM");

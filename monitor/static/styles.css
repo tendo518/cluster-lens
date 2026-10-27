@@ -3223,8 +3223,8 @@ body {font-size:14px;}
 .button-small,.pin-button-labeled {font-size:12px;}
 .topbar-right {font-size:12px;}
 .appearance-controls {position:relative;display:flex;align-items:center;}
-.appearance-toggle {width:36px;min-height:36px;padding:0;}
-.appearance-toggle .icon {width:20px;height:20px;}
+.appearance-toggle,.logout-button {width:36px;min-height:36px;padding:0;}
+.appearance-toggle .icon,.logout-button .icon {width:20px;height:20px;}
 .appearance-toggle[aria-expanded="true"] {background:var(--green-soft);border-color:var(--green-border);color:var(--green);}
 .appearance-panel {position:absolute;z-index:30;right:0;top:calc(100% + 8px);width:232px;max-width:calc(100vw - 28px);display:grid;gap:14px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-float);box-shadow:var(--shadow-float);color:var(--text);}
 .appearance-panel[hidden] {display:none;}

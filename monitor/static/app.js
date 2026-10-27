@@ -51,7 +51,28 @@ function readPinnedHosts() {
     return Array.isArray(saved) ? [...new Set(saved.filter(name => typeof name === "string" && name.length > 0 && name.length <= 255))] : [];
   } catch {return [];}
 }
-function readToken() {try {return sessionStorage.getItem("hqlab-monitor-token") || "";} catch {return "";}}
+const TOKEN_STORAGE_KEY = "hqlab-monitor-token";
+function readToken() {
+  try {const token = localStorage.getItem(TOKEN_STORAGE_KEY); if (token) return token;} catch { /* Try the legacy session when persistent storage is unavailable. */ }
+  try {return sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";} catch {return "";}
+}
+function saveToken(token) {
+  if (!token) return true;
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    try {sessionStorage.setItem(TOKEN_STORAGE_KEY, token);} catch { /* In-memory authentication still works. */ }
+    return false;
+  }
+  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Persistent storage is already updated. */ }
+  return true;
+}
+function clearToken() {
+  state.token = "";
+  try {localStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Storage may be disabled. */ }
+  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Also discard legacy session credentials where possible. */ }
+  $("#logout-button").hidden = true;
+}
 const state = {overview:null, history:null, hours:1, custom:null, metric:"compute", historyHost:"", search:"", status:"all", processSearch:"", user:"", processPage:1, processPageSize:25, detail:null, detailGpu:"", pinned:readPinnedHosts(), token:readToken(), connected:false, lastSuccess:0, clockOffset:0, refreshing:false, historyRequest:0, historyCycle:null};
 const nowSeconds = () => Date.now() / 1000 + state.clockOffset;
 class AuthError extends Error {}
@@ -60,8 +81,10 @@ function requireAuth() {
   if (!$("#auth-dialog").open) $("#auth-dialog").showModal();
 }
 async function request(path) {
-  const response = await fetch(path, {headers: state.token ? {Authorization:`Bearer ${state.token}`} : {}, signal:AbortSignal.timeout(20000), cache:"no-store"});
-  if (response.status === 401) {requireAuth(); throw new AuthError("需要访问令牌");}
+  const token = state.token;
+  const response = await fetch(path, {headers: token ? {Authorization:`Bearer ${token}`} : {}, signal:AbortSignal.timeout(20000), cache:"no-store"});
+  if (token !== state.token) throw new AuthError("登录状态已变更");
+  if (response.status === 401) {clearToken(); requireAuth(); throw new AuthError("需要访问令牌");}
   if (!response.ok) {
     let message = `请求失败 (${response.status})`;
     try {message = (await response.json()).error || message;} catch { /* Non-JSON gateway errors. */ }
@@ -69,7 +92,11 @@ async function request(path) {
   }
   return response;
 }
-const api = async path => (await request(path)).json();
+const api = async path => {
+  const token = state.token, data = await (await request(path)).json();
+  if (token !== state.token) throw new AuthError("登录状态已变更");
+  return data;
+};
 let toastTimeout;
 function toast(message) {
   clearTimeout(toastTimeout); $("#toast").textContent = message; $("#toast").hidden = false;
@@ -86,8 +113,11 @@ async function refreshOverview(forceHistory = false) {
   state.refreshing = true;
   $("#refresh-button").disabled = true;
   $("#refresh-button .icon").classList.add("rotating");
+  const token = state.token;
   try {
     const data = await api("/api/overview");
+    if (token !== state.token) return;
+    saveToken(token);
     state.overview = data; state.connected = true; state.lastSuccess = Date.now();
     state.clockOffset = data.server_time - Date.now() / 1000;
     $("#connection-error").hidden = true;
@@ -133,6 +163,7 @@ function allProcesses() {
 }
 function renderOverview() {
   const data = state.overview;
+  $("#logout-button").hidden = !state.token;
   $("#demo-banner").hidden = !data.demo;
   $("#sidebar-source").textContent = data.demo ? "演示数据 · 本地模拟" : "已连接监控服务";
   $("#nav-host-count").textContent = data.hosts.length;
@@ -420,13 +451,27 @@ $("#node-dialog").addEventListener("click", event => {
   if (event.target === event.currentTarget && (event.clientX < rect.left || event.clientX > rect.right)) event.currentTarget.close();
 });
 $("#node-dialog").addEventListener("close", () => {state.detail = null;});
+$("#logout-button").addEventListener("click", () => {clearToken(); location.reload();});
+window.addEventListener("storage", event => {
+  let token;
+  try {
+    if (event.storageArea !== localStorage || event.key !== TOKEN_STORAGE_KEY && event.key !== null) return;
+    token = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+  } catch {return;}
+  if (token === state.token) return;
+  state.token = token;
+  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Still reload when session storage is disabled. */ }
+  location.reload();
+});
 $("#auth-dialog").addEventListener("cancel", event => event.preventDefault());
 $("#auth-form").addEventListener("submit", async event => {
   event.preventDefault(); const button = $("#auth-form button"); button.disabled = true;
-  state.token = $("#access-token").value.trim(); $("#auth-error").hidden = true;
+  const token = $("#access-token").value.trim();
+  state.token = token; $("#auth-error").hidden = true;
   try {
     await api("/api/overview");
-    try {sessionStorage.setItem("hqlab-monitor-token", state.token);} catch { /* In-memory authentication still works. */ }
+    if (token !== state.token) return;
+    if (!saveToken(token)) toast("浏览器无法持久保存令牌，当前会话仍可使用；重新打开可能需要再次登录。");
     $("#access-token").value = ""; $("#auth-dialog").close(); await refreshOverview(true);
   } catch (error) {
     $("#auth-error").textContent = error instanceof AuthError ? "令牌无效，请重新输入。" : `无法连接服务：${error.message}`;
