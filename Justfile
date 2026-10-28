@@ -1,4 +1,4 @@
-# Development/build dependencies are application-owned, never installed on agents.
+# Build dependencies are application-owned, never installed on reporting nodes.
 set working-directory := '.'
 # Prepared interpreter only: no implicit uv sync/download during build/configure.
 python := env('PYTHON', '.venv/bin/python')
@@ -40,7 +40,7 @@ schemas:
 
 test: assets
     {{python}} -m unittest discover -s backend/tests -v
-    {{python}} -m unittest discover -s agents/tests -v
+    {{python}} -m unittest discover -s node_reporter/tests -v
     {{python}} -m unittest discover -s tests -v
     npm --prefix frontend test
 

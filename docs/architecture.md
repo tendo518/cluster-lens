@@ -9,7 +9,7 @@ frontend/src (TypeScript) ── Vite ── frontend/dist
 浏览器 ─ 同源 HTTP ─ FastAPI + Uvicorn ─ MonitoringService ─ Store / SQLite WAL
                         ▲                   │
                         │              MonitorRuntime（lifespan）
-Python 单文件 agent ─ 认证 HTTP(S) 上报       │
+Python 节点上报程序 ─ 认证 HTTP(S) 上报       │
                                           └─ 离线判定 / demo / 保留期清理
 ```
 
@@ -19,7 +19,7 @@ Python 单文件 agent ─ 认证 HTTP(S) 上报       │
 
 - `api/app.py`：显式 FastAPI 路由、viewer 认证依赖、异常映射、安全响应、报告流读取。保留原始路径匹配语义，不通过手写 HTTP 解析器绕过 h11。
 - `server.py`：单进程 Uvicorn 配置和小型同步嵌入接口 `MonitorServer`；没有旧 ThreadingHTTPServer / Handler。关闭代理头信任、自动 slash 重定向、公开文档、请求目标访问日志和多 worker。
-- `schemas/`：Pydantic 配置、UI 和报告模型，同时提供运行校验与离线 JSON Schema。严格版本 / 类型不靠强制转换。agent 不导入这些模型。
+- `schemas/`：Pydantic 配置、UI 和报告模型，同时提供运行校验与离线 JSON Schema。严格版本 / 类型不靠强制转换。节点上报程序不导入这些模型。
 - `service.py`：HTTP 无关的认证、身份、时序、去重、状态、overview / history 用例；写入成功后才返回确认并发布内存状态。返回嵌套快照副本，避免调用者修改共享状态。
 - `store.py`：连接、WAL、串行写事务、历史窗口查询与保留期操作。历史响应的多条查询处于同一个读事务，不会拼接不同 WAL 快照。
 - `history.py` / `exports.py`：时间范围、桶与统计响应、纯 CSV 序列化。未知 / 离线仍为 NULL，CSV BOM / 列 / 公式保护不变。

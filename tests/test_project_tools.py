@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from _agent import remote_probe
+from _reporter import remote_probe
 from monitor.config import load_config
 from project_tools.configure import generate
 
@@ -30,7 +30,7 @@ class ProjectToolsTests(unittest.TestCase):
         with patch("subprocess.run", side_effect=AssertionError("No external tools")):
             config = generate(self.directory, self.nodes, self.url)
         self.assertEqual(load_config(self.directory / "server.json")[0], config)
-        agent = remote_probe.load_agent_config(
+        agent = remote_probe.load_reporter_config(
             str(self.directory / "agents/node-a.json")
         )
         self.assertEqual(agent["token"], config["hosts"][0]["agent_token"])
@@ -43,11 +43,31 @@ class ProjectToolsTests(unittest.TestCase):
         for path in files:
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_new_and_legacy_endpoints_preserve_credentials_and_reject_lookalikes(self):
+        first = generate(self.directory, self.nodes, self.url)
+        endpoint = "https://monitor.example.org/api/node/report"
+        second = generate(self.directory, self.nodes, endpoint)
+        self.assertEqual(first["viewer_token"], second["viewer_token"])
+        self.assertEqual(
+            first["hosts"][0]["agent_token"], second["hosts"][0]["agent_token"]
+        )
+        reporter = remote_probe.load_reporter_config(
+            self.directory / "agents/node-a.json"
+        )
+        self.assertEqual(reporter["url"], endpoint)
+        for bad in (
+            endpoint + "/",
+            endpoint + "?token=secret",
+            endpoint.replace("/node/", "/%6eode/"),
+        ):
+            with self.subTest(url=bad), self.assertRaises(ValueError):
+                generate(self.directory, self.nodes, bad)
+
     def test_configuration_versions_are_integers_without_coercion(self):
         generate(self.directory, self.nodes, self.url)
         for path, load in (
             (self.directory / "server.json", load_config),
-            (self.directory / "agents/node-a.json", remote_probe.load_agent_config),
+            (self.directory / "agents/node-a.json", remote_probe.load_reporter_config),
         ):
             original = json.loads(path.read_text())
             for version in (True, False, 1.0, "1", None, 0, 2, [], {}):
@@ -193,7 +213,7 @@ class ProjectToolsTests(unittest.TestCase):
         url = f"http://127.0.0.1:{server.server_port}/api/agent/report"
         generate(self.directory, self.nodes, url)
         path = self.directory / "agents/node-a.json"
-        config = remote_probe.load_agent_config(path)
+        config = remote_probe.load_reporter_config(path)
         with self.assertRaises(HTTPError) as error:
             remote_probe.send_report(config, {"version": 1})
         self.assertEqual(error.exception.code, 302)
@@ -209,7 +229,7 @@ class ProjectToolsTests(unittest.TestCase):
         ):
             path.write_text(json.dumps({**config, **changes}))
             with self.subTest(changes=changes), self.assertRaises(ValueError):
-                remote_probe.load_agent_config(path)
+                remote_probe.load_reporter_config(path)
 
 
 if __name__ == "__main__":

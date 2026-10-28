@@ -23,10 +23,10 @@ def generate(
         or parsed.password
         or parsed.query
         or parsed.fragment
-        or parsed.path != "/api/agent/report"
+        or parsed.path not in ("/api/node/report", "/api/agent/report")
     ):
         raise ValueError(
-            "上报地址必须是无凭据、无查询参数的 http(s)://主机[:端口]/api/agent/report"
+            "上报地址必须是无凭据、无查询参数的 http(s)://主机[:端口]/api/node/report（兼容 /api/agent/report）"
         )
     # Validate the port too, even though it is optional in HTTP(S) URLs.
     if parsed.port is not None and not 1 <= parsed.port <= 65535:

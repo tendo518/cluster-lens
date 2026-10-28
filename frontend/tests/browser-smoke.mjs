@@ -259,7 +259,7 @@ try {
   assert.equal(await evaluate("document.querySelector('#pinned-grid .node-name').textContent"), priorityHost, "status filter does not hide pinned hosts");
   await click("#node-grid .node-name");
   assert.match(await evaluate("document.querySelector('#node-detail').textContent"), /节点当前离线/);
-  assert.match(await evaluate("document.querySelector('#node-detail').textContent"), /未收到节点采集脚本上报/);
+  assert.match(await evaluate("document.querySelector('#node-detail').textContent"), /未收到节点上报程序的数据/);
   await cdp("Input.dispatchKeyEvent", {type:"keyDown", key:"Escape", code:"Escape", windowsVirtualKeyCode:27});
   await cdp("Input.dispatchKeyEvent", {type:"keyUp", key:"Escape", code:"Escape", windowsVirtualKeyCode:27});
   await waitFor("!document.querySelector('#node-dialog').open", "Escape closes inspector");

@@ -2,7 +2,7 @@
 
 Run with: .venv/bin/python -m unittest discover -s backend/tests -p test_api_contract.py -v
 Unlike the service/store unit tests, these assert literal public payloads and
-error precedence. No receiver thread, real agent, deployment config, or SSH runs.
+error precedence. No receiver thread, real reporter, deployment config, or SSH runs.
 """
 
 import csv

@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 业务分层 | MonitoringService、Store、history / exports、MonitorRuntime | 并发写入、持久化后确认、快照、调度与 shutdown |
 | 正确性补强 | 严格整数协议版本、业务层唯一采样周期、跨标签登录修订、焦点恢复 | 协议异常、历史兼容、浏览器竞态和真实交互 |
-| 组件分离 | backend/src/monitor、frontend、agents、contracts | 独立工具环境、标准库 agent、共享 fixtures |
+| 组件分离 | backend/src/monitor、frontend、node_reporter、contracts | 独立工具环境、标准库节点上报程序、共享 fixtures |
 | 前端构建 | strict TypeScript 模块 + Vite + npm lock + 来源 / 输出 receipt | 类型、格式、47 项前端单测与完整浏览器回归 |
 | 现代中心 | FastAPI 显式路由 / Depends、Pydantic、Uvicorn / h11 单 worker | 原 HTTP 合同、框架路由、线程执行、慢请求与在途写入排空 |
 | 可安装运行时 | Hatchling wheel、包资源、源码外 `-I` 运行、XDG state | 离线安装、无源码阴影、无安装目录写数据库、预检无副作用 |
@@ -28,13 +28,13 @@
 
 ## 明确排除，而非待补占位
 
-1. **Node agent**：Python agent 已覆盖现有节点；本版本只声明 python，其他选择拒绝。将来需独立实现和共同协议验证后再增加。
+1. **Node.js 节点上报程序**：Python 节点上报程序已覆盖现有节点；本版本只声明 python，其他选择拒绝。将来需独立实现和共同协议验证后再增加。
 2. **Caddy / reverse proxy**：当前网络、域名和 TLS 由部署方决定，本次不引入代理或新认证会话。
 3. **其他中心平台**：只声明 CPython 3.13 / Linux x86_64 / glibc 基线，不声称在最低 glibc 主机或其他 OS / ABI 上完成了实际验收。
 4. **自动版本 GC / 数据库 schema 回退 / 跨节点事务**：不是本版本功能。保留代码环境供人工检查，自动恢复仅涉及托管输入和服务状态。
 
 ## 兼容边界
 
-格式良好的 API、鉴权、错误、HEAD / CSV 行为保留。h11 对非法 HTTP framing 的处理不模拟旧自制解析器；精确区别见[协议文档](protocols.md)。中心 Python 要求提高不影响 Python 3.6 agent。历史 format 1 由外部控制器兼容，新构建只产生 format 2。
+格式良好的 API、鉴权、错误、HEAD / CSV 行为保留。h11 对非法 HTTP framing 的处理不模拟旧自制解析器；精确区别见[协议文档](protocols.md)。中心 Python 要求提高不影响 Python 3.6 节点上报程序。历史 format 1 由外部控制器兼容，新构建只产生 format 2。
 
 代码发布、gitlink 更新与生产部署分别验收。完成本轮重构不授权迁移生产账户、升级远端 Python、变更令牌或恢复数据库。

@@ -14,7 +14,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from _agent import remote_probe
+from _reporter import remote_probe
 from monitor.models import Host
 from monitor.protocol import MAX_REPORT_BYTES
 from monitor.server import MonitorServer

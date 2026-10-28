@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from _agent import remote_probe
+from _reporter import remote_probe
 from monitor.schemas import Report, export_schemas
 from project_tools.configure import generate
 
@@ -68,7 +68,7 @@ class ContractTests(unittest.TestCase):
                 [{"name": "fixture-node", "address": "192.0.2.1"}],
                 "https://monitor.example.org/api/agent/report",
             )
-            agent = remote_probe.load_agent_config(
+            agent = remote_probe.load_reporter_config(
                 directory / "agents/fixture-node.json"
             )
             self.assertEqual(config["version"], agent["version"])

@@ -22,7 +22,10 @@ class ConfigHost(WireModel):
     groups: described(list[str], "节点 groups 应为字符串列表") = Field(
         default_factory=list
     )
-    agent_token: described(Token, TOKEN_ERROR) = Field(repr=False)
+    # Wire key remains stable; its schema title names the component clearly.
+    agent_token: described(Token, TOKEN_ERROR) = Field(
+        repr=False, title="Node Reporter Token"
+    )
 
     @model_validator(mode="before")
     @classmethod

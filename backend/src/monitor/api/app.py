@@ -26,7 +26,7 @@ from .. import APPLICATION, __version__
 from ..assets import PUBLIC_ASSETS, Assets
 from ..exports import history_csv
 from ..protocol import MAX_REPORT_BYTES
-from ..service import AgentAuthenticationError, IngestionDisabledError
+from ..service import IngestionDisabledError, NodeAuthenticationError
 from ..ui import favicon, icon_bytes, parse_ui, render_page
 
 LOG = logging.getLogger(__name__)
@@ -110,8 +110,8 @@ def install_exception_handlers(app):
     async def ingestion_disabled(request, exc):
         return error(request, 403, str(exc))
 
-    @app.exception_handler(AgentAuthenticationError)
-    async def agent_authentication_failed(request, exc):
+    @app.exception_handler(NodeAuthenticationError)
+    async def node_authentication_failed(request, exc):
         return error(request, 401, str(exc))
 
     @app.exception_handler(ValueError)
@@ -240,7 +240,10 @@ def create_app(service, token=None, ui=None, *, runtime=None, assets=None):
     def runtime_status(request: Request):
         return json_response(request, 200, identity)
 
+    # Keep the historical endpoint for existing deployments; both paths use
+    # exactly the same parsing, authentication, deduplication and persistence.
     @app.post("/api/agent/report")
+    @app.post("/api/node/report")
     async def report(request: Request):
         await run_in_threadpool(service.ensure_ingestion_enabled)
         if request.headers.get("transfer-encoding"):

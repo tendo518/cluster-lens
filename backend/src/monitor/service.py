@@ -9,7 +9,7 @@ from .history import assemble_history, history_bucket, history_range
 from .protocol import validate_report
 
 
-class AgentAuthenticationError(PermissionError):
+class NodeAuthenticationError(PermissionError):
     """The presented credential does not identify the report's configured node."""
 
 
@@ -111,7 +111,7 @@ class MonitoringService:
         self.ensure_ingestion_enabled()
         name = payload.get("host") if isinstance(payload, dict) else None
         if not self.authorized(name, authorization):
-            raise AgentAuthenticationError("无效的节点上报身份")
+            raise NodeAuthenticationError("无效的节点上报身份")
         return self.accept_report(payload, now)
 
     def authorized(self, name, header):
@@ -191,7 +191,7 @@ class MonitoringService:
                     "gpus": [],
                     "warnings": [],
                     "collection_ms": None,
-                    "error": f"超过 {self.stale_after} 秒未收到节点采集脚本上报，请检查脚本服务及到中心的网络",
+                    "error": f"超过 {self.stale_after} 秒未收到节点上报程序的数据，请检查上报程序及到中心的网络",
                     **{
                         key: previous.get(key)
                         for key in ("received_at", "report_id", "collected_at")

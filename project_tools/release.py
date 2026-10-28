@@ -73,11 +73,11 @@ def check_source(project):
             raise ValueError("发布包不允许符号链接：" + str(parent))
     for path in runtime_files(package, {".py"}, {"static"}):
         ast.parse(path.read_text(), filename=str(path), feature_version=(3, 13))
-    agent = project / "agents/python/agent.py"
-    for path in (agent.parent.parent, agent.parent, agent):
+    reporter = project / "node_reporter/python/reporter.py"
+    for path in (reporter.parent.parent, reporter.parent, reporter):
         if path.is_symlink():
             raise ValueError("发布包不允许符号链接：" + str(path))
-    body = agent.read_bytes()
+    body = reporter.read_bytes()
     ast.parse(body.decode(), feature_version=(3, 6))
     return body
 
@@ -224,10 +224,10 @@ def build(directory, wheelhouse=None, frontend=None):
     directory = Path(directory).absolute()
     if directory.is_symlink() or directory.resolve() in (project, *project.parents):
         raise ValueError("发布输出不能覆盖源码根或是符号链接")
-    for source in ("backend", "frontend", "agents", "project_tools"):
+    for source in ("backend", "frontend", "node_reporter", "project_tools"):
         if directory.resolve().is_relative_to(project / source):
             raise ValueError("发布输出不能写入组件源码目录")
-    agent = check_source(project)
+    reporter = check_source(project)
     files, selected = verify_cache(wheelhouse or project / ".build/wheels", project)
     cache = project / ".build"
     cache.mkdir(exist_ok=True)
@@ -264,7 +264,8 @@ def build(directory, wheelhouse=None, frontend=None):
         f"pip=={pip['version']} --hash=sha256:{pip['sha256']}\n".encode()
     )
     bundle = archive_bytes(files)
-    artifacts = {"server.tar.gz": bundle, "agent.py": agent}
+    # Artifact name is the existing format-2 compatibility contract.
+    artifacts = {"server.tar.gz": bundle, "agent.py": reporter}
     manifest = {
         "format_version": 2,
         "application": "hqlab-monitor",

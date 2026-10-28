@@ -143,7 +143,7 @@ export function createOverviewView(
         : "已连接监控服务";
     $("#update-label").textContent = latest
       ? `最近更新 ${shortTime(latest)} · ${ago(latest)}`
-      : "正在等待节点采集脚本首次上报…";
+      : "正在等待节点上报程序首次上报…";
     $("#collection-label").textContent =
       `${data.mode === "push" ? `节点约每 ${data.interval} 秒上报 · ${data.stale_after} 秒无上报视为离线` : `每 ${data.interval} 秒模拟采集`}${!auto ? " · 页面自动刷新已暂停" : ""}`;
   }

@@ -1,4 +1,4 @@
-"""Standalone, read-only node agent; Python 3.6+, standard library only.
+"""Standalone, read-only Node Reporter; Python 3.6+, standard library only.
 
 With --config: collect once and POST to the central service. A systemd timer
 repeats execution. Without arguments: print a local snapshot for diagnostics.
@@ -260,17 +260,17 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def load_agent_config(path):
+def load_reporter_config(path):
     config = json.loads(read_text(path))
     if (
         not isinstance(config, dict)
         or type(config.get("version")) is not int
         or config["version"] != 1
     ):
-        raise ValueError("agent 配置必须为 version=1 的 JSON 对象")
+        raise ValueError("节点上报配置必须为 version=1 的 JSON 对象")
     host, token = config.get("host"), config.get("token")
     if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", host):
-        raise ValueError("agent host 无效，必须与中心配置中的节点名称一致")
+        raise ValueError("节点上报 host 无效，必须与中心配置中的节点名称一致")
     if (
         not isinstance(token, str)
         or not 16 <= len(token) <= 256
@@ -278,10 +278,10 @@ def load_agent_config(path):
         or not token.isprintable()
         or any(c.isspace() for c in token)
     ):
-        raise ValueError("agent token 必须为至少 16 位无空白的可打印 ASCII 字符")
+        raise ValueError("节点上报 token 必须为至少 16 位无空白的可打印 ASCII 字符")
     endpoint = config.get("url")
     if not isinstance(endpoint, str) or not endpoint:
-        raise ValueError("agent url 无效")
+        raise ValueError("节点上报 url 无效")
     url = urlsplit(endpoint)
     if (
         url.scheme not in ("http", "https")
@@ -290,10 +290,10 @@ def load_agent_config(path):
         or url.password
         or url.query
         or url.fragment
-        or url.path != "/api/agent/report"
+        or url.path not in ("/api/node/report", "/api/agent/report")
     ):
         raise ValueError(
-            "agent url 必须是无凭据的 http(s) 上报接口，不允许查询参数或重定向"
+            "节点上报 url 必须是无凭据的 http(s) /api/node/report 上报接口（兼容 /api/agent/report），不允许查询参数或重定向"
         )
     for key, default, minimum, maximum in (
         ("interval", 30, 5, 3600),
@@ -301,10 +301,10 @@ def load_agent_config(path):
     ):
         value = config.get(key, default)
         if type(value) is not int or not minimum <= value <= maximum:
-            raise ValueError("agent " + key + " 超出范围")
+            raise ValueError("节点上报 " + key + " 超出范围")
         config[key] = value
     if config.get("ca_file") is not None and not isinstance(config["ca_file"], str):
-        raise ValueError("agent ca_file 必须为证书路径")
+        raise ValueError("节点上报 ca_file 必须为证书路径")
     return config
 
 
@@ -360,14 +360,16 @@ def send_report(config, report):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ClusterLens 节点本地采集 / 单次上报")
+    parser = argparse.ArgumentParser(
+        description="ClusterLens Node Reporter（节点上报程序）"
+    )
     parser.add_argument("--config", help="节点专属 JSON 配置；不指定时只打印本机快照")
     args = parser.parse_args()
     if not args.config:
         print(json.dumps(collect(), ensure_ascii=True, allow_nan=False))
         return 0
     try:
-        config = load_agent_config(args.config)
+        config = load_reporter_config(args.config)
         send_report(config, make_report(config))
     except HTTPError as exc:
         # Do not log request headers, credentials, or untrusted response bodies.

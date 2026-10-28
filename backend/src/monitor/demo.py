@@ -42,7 +42,7 @@ def demo_snapshot(host, ts):
         snapshot.update(
             status="offline",
             last_seen=None,
-            error="演示：超过 100 秒未收到节点采集脚本上报，请检查脚本服务及网络连接。",
+            error="演示：超过 100 秒未收到节点上报程序的数据，请检查上报程序及网络连接。",
         )
         return snapshot
     cpu = round(

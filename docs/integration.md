@@ -1,12 +1,31 @@
 # 部署集成契约
 
+## 术语与兼容标识
+
+**Node Reporter / 节点上报程序**是采集并发送监控报告的组件；**节点（node）**是被监控机器，**节点上报（node reporting）**是行为。JavaScript 运行时统一称为 **Node.js**，不能与节点混用。本版本只有 Python 实现，Node.js 节点上报程序仍未实现。
+
+源码入口为 `node_reporter/python/reporter.py`，独立测试位于 `node_reporter/tests/`。下列含 `agent` / `agents` 的历史标识仅保留为兼容契约，不用于称呼机器或组件，也不指编码助手：
+
+| 兼容边界 | 保留拼写 | 含义 |
+| --- | --- | --- |
+| HTTP / 身份 | `/api/agent/report`、`agent_token` | 旧节点上报端点、逐节点令牌字段；新端点为 `/api/node/report` |
+| 发布产物 / 能力 | `agent.py`、describe / release 的 `agents` | 节点上报程序的部署文件名及实现能力字段 |
+| 生成 / 安装配置 | `agents/<node>.json`、`agent.json`、`agent-service.json` | 逐节点私密配置和服务描述；不是源码目录 |
+| 安装角色 / 用户单元 | `--role agent`、`hqlab-monitor-agent-<node>.service`、`hqlab-monitor-agent-<node>.timer` | 已部署的角色参数及 systemd 单元名 |
+| 部署变量 / 元数据 | `monitor_agent_python`、`monitor_agent_implementation`、`agent_implementations` | 解释器路径与实现选择 |
+| Schema / fixture | `agent-*.json`（如 `agent-report.schema.json`、`agent-config-v1.json`） | 现有机器可读契约文件名 |
+
+部署命令与上述标识必须保持原拼写；术语和源码目录调整不改变 release format 2、配置 / 报告 version=1 或 schema 字段及约束（schema 的展示标题已更新），也不表示完成了新部署。
+
+新中心与 Node Reporter 同时支持 `/api/node/report` 和历史 `/api/agent/report`，二者使用同一鉴权、去重和持久化逻辑。现有控制器默认仍生成旧地址以兼容未升级中心；已保存地址不会自动改写。新地址必须在中心**和对应节点上报程序都已升级**后显式配置，并考虑回退：旧中心或旧上报程序不支持新地址；若需要回退到旧版本，先将对应配置恢复为旧地址。单独更新节点时切勿提前切换地址。
+
 ## 职责与支持范围
 
-应用拥有中心 wheel、独立 agent、前端、配置 / 报告规则与发布工具；部署方拥有 inventory、SSH、账户、实际配置、服务管理、安装路径和迁移。只通过公开 CLI、JSON 和产物集成，不导入应用内部模块，不注入 PYTHONPATH，不扫描运行源码布局。
+应用拥有中心 wheel、独立节点上报程序、前端、配置 / 报告规则与发布工具；部署方拥有 inventory、SSH、账户、实际配置、服务管理、安装路径和迁移。只通过公开 CLI、JSON 和产物集成，不导入应用内部模块，不注入 PYTHONPATH，不扫描运行源码布局。
 
 新发布为 **format 2**；发行标识仍为 `hqlab-monitor`，Python 包入口仍为 `python -m monitor`。中心支持常规 CPython 3.13、Linux x86_64、glibc ≥2.17、SQLite ≥3.25，需 venv / ensurepip。已实际验证的平台为 CPython 3.13.14 / Linux x86_64；不是 ARM、Windows、musl、自由线程 Python 或其他 Python 小版本的兼容承诺。部署不得自动安装 Python 或提权补齐前提。
 
-Python agent 仍是 3.6+ 标准库单文件。Node agent 和反向代理明确不在本版本交付范围，不能静默回退实现，也不自动修改 TLS、域名或网络拓扑。
+Python 节点上报程序仍是 3.6+ 标准库单文件。Node.js 节点上报程序和反向代理明确不在本版本交付范围，不能静默回退实现，也不自动修改 TLS、域名或网络拓扑。
 
 ## 工具环境与公开 CLI
 
@@ -22,7 +41,7 @@ npm --prefix frontend run build
 .venv/bin/python -m project_tools describe
 .venv/bin/python -m project_tools configure \
   --nodes /absolute/nodes.json \
-  --url https://monitor.example.org/api/agent/report \
+  --url https://monitor.example.org/api/node/report \
   --ui /absolute/site-ui.json --output /absolute/private-config
 .venv/bin/python -m project_tools check-config /absolute/private-config/server.json
 ```
@@ -42,12 +61,12 @@ npm --prefix frontend run build
 | 文件 | 内容 |
 | --- | --- |
 | `server.tar.gz` | `wheels/*.whl`、独立 `bootstrap/pip-*.whl`、两份精确版本 / SHA-256 requirements |
-| `agent.py` | 与 `agents/python/agent.py` 字节一致，包括末尾换行 |
-| `release.json` | format / application / version / config / report、来源摘要、产物大小和摘要、agent 能力、中心目标与逐成员清单 |
+| `agent.py` | 与 `node_reporter/python/reporter.py` 字节一致，包括末尾换行；旧产物名仅为部署兼容 |
+| `release.json` | format / application / version / config / report、来源摘要、产物大小和摘要、节点上报实现能力、中心目标与逐成员清单 |
 
-`center` 声明 `installation=venv-ensurepip-pip`、`module=monitor`、目标 Python / ABI / libc / SQLite 和两份 requirements 路径。`source` 记录 Git revision（未提交工作区有 dirty 标记）、uv.lock 与前端 lock 的 SHA-256。运行 wheel 包含 `monitor` 和装配静态资源，不包含工具、测试、agent、控制端代码、实际配置或数据库。
+`center` 声明 `installation=venv-ensurepip-pip`、`module=monitor`、目标 Python / ABI / libc / SQLite 和两份 requirements 路径。`source` 记录 Git revision（未提交工作区有 dirty 标记）、uv.lock 与前端 lock 的 SHA-256。运行 wheel 包含 `monitor` 和装配静态资源，不包含工具、测试、节点上报程序、控制端代码、实际配置或数据库。
 
-构建检查前端来源 / 输出 receipt、源码链接、Python 3.6 agent 语法、wheel 元数据 / 目标兼容性及锁定依赖闭包；归档顺序 / 时间戳固定，可重复构建。manifest 最后发布；消费者仍须核验整个文件集合，不能把文件存在视为构建成功。SHA-256 只证明一致性，不是签名，来源必须可信。
+构建检查前端来源 / 输出 receipt、源码链接、Python 3.6 节点上报程序语法、wheel 元数据 / 目标兼容性及锁定依赖闭包；归档顺序 / 时间戳固定，可重复构建。manifest 最后发布；消费者仍须核验整个文件集合，不能把文件存在视为构建成功。SHA-256 只证明一致性，不是签名，来源必须可信。
 
 配置与发布分离：外部适配器使用显式 `--tool-python` / `--release-dir`，在生成配置前校验产物与 describe；`--build-release` 仅显式离线装配，不下载依赖。输入发布目录是只读资源，不能与私密输出重叠。控制器仍可适配历史 format 1；新应用不再构建 format 1，不把它当 wheel 处理。
 
@@ -76,6 +95,6 @@ npm --prefix frontend run build
 - **从不回退、复制覆盖、移动或合并 live SQLite / WAL。** 新版本已成功写入的历史也保留。未来不兼容数据库迁移必须另有显式设计，本版本没有这种迁移。
 - 旧 v1 源码和已准备环境保留，以便恢复旧单元。未完成环境不会覆盖重用或递归删除，应在确认无引用后人工处理。
 - 卸载先停用服务，清除托管凭据及事务中的凭据副本；默认保留数据库、linger、纯代码环境、恢复助手和未知文件。不做自动环境 GC。
-- 单中心切换不是跨节点事务。agent 更新失败 / 不可达不会撤销其他节点已成功的操作；必须如实检查 recap 和实际报告。
+- 单中心切换不是跨节点事务。节点上报程序更新失败或节点不可达，不会撤销其他节点已成功的操作；必须如实检查 recap 和实际报告。
 
 更新源码、配置、账户、令牌与数据库是不同操作，不可隐式捆绑。正常更新保持凭据与历史路径；跨账户迁移另行授权并正确处理 WAL。

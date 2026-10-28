@@ -2,7 +2,9 @@
 
 ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不搜索父目录，也不推断部署账户或数据库位置。除 CLI 特别说明外，路径相对于当前工作目录；跨工程调用建议使用绝对路径。
 
-以下工具命令在应用根目录使用已准备的 `.venv`（见 [README](../README.md)）；不会自动安装依赖。中心是 CPython 3.13，独立 agent 仍只要求 Python 3.6。
+以下工具命令在应用根目录使用已准备的 `.venv`（见 [README](../README.md)）；不会自动安装依赖。中心是 CPython 3.13，独立节点上报程序仍只要求 Python 3.6。
+
+组件统一称为 Node Reporter / 节点上报程序。下文 URL、字段、配置路径和部署产物名保留旧拼写以兼容已有安装，见[术语与兼容标识](integration.md#术语与兼容标识)。
 
 ## 1. 生成配置
 
@@ -19,7 +21,7 @@ ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不�
 
 ```bash
 .venv/bin/python -m project_tools configure --nodes examples/nodes.json \
-  --url https://monitor.example.org/api/agent/report \
+  --url https://monitor.example.org/api/node/report \
   --ui examples/ui.json --output config/local \
   --interval 30 --stale-after 100 --retention-days 30
 ```
@@ -54,7 +56,7 @@ ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不�
 | `hosts` | 非空列表，含公开节点字段与逐节点 `agent_token` |
 | `ui` | 可选公开展示对象，省略字段使用下表默认值 |
 
-所有 agent 令牌必须彼此不同，并与 viewer 令牌不同。
+所有节点上报令牌必须彼此不同，并与 viewer 令牌不同。
 
 ```bash
 .venv/bin/python -m project_tools check-config /path/to/server.json
@@ -116,23 +118,24 @@ UI 文件是单独的 JSON 对象；也可以直接将同样的运行字段写�
 
 明暗 / 配色的最终优先级为：浏览器已保存的有效偏好 → 站点配置 → 应用默认值。自动主题跟随系统；损坏、被清除或无法读取的偏好回落到站点默认。管理员修改默认值不会覆盖用户的个人选择。
 
-## 4. 采集端配置
+## 4. 节点上报程序配置
 
-独立 agent 使用 `version=1`、`host`、`url`、`token`、`interval`、`timeout`；可选 `ca_file` 指定自定义 TLS CA 文件。interval 为 5—3600 秒，timeout 为 1—30 秒、默认 8。host 必须精确匹配中心名称，token 仅属于该节点。
+独立节点上报程序使用 `version=1`、`host`、`url`、`token`、`interval`、`timeout`；可选 `ca_file` 指定自定义 TLS CA 文件。interval 为 5—3600 秒，timeout 为 1—30 秒、默认 8。host 必须精确匹配中心名称，token 仅属于该节点。
 
 ```bash
 python3 /path/to/agent.py --config /path/to/agent.json
 ```
 
-不带配置执行采集器只打印本机诊断；带配置执行一次采集 / 上报后退出。周期调度由部署方负责，需禁止重叠、限制总运行时间，不积压旧报告。
+不带配置执行节点上报程序只打印本机诊断；带配置执行一次采集 / 上报后退出。周期调度由部署方负责，需禁止重叠、限制总运行时间，不积压旧报告。
 
-URL 必须是 HTTP(S) 完整 `/api/agent/report` 端点，不含用户名、密码、查询或片段。agent 忽略代理环境变量、拒绝重定向、校验 TLS；不支持关闭证书校验。多机部署前请检查路由、时钟和证书。
+URL 必须是 HTTP(S) 完整 `/api/node/report` 或兼容的 `/api/agent/report` 端点，不含用户名、密码、查询或片段。旧版本仅支持旧地址；仅在中心和该节点上报程序均升级后显式切换，回退旧版本前恢复旧地址。节点上报程序忽略代理环境变量、拒绝重定向、校验 TLS；不支持关闭证书校验。多机部署前请检查路由、时钟和证书。
 
 ## 5. HTTP 接口
 
 | 接口 | 鉴权与用途 |
 | --- | --- |
-| `POST /api/agent/report` | 逐节点 Bearer，只能上报自身身份 |
+| `POST /api/node/report` | 逐节点 Bearer，只能上报自身身份 |
+| `POST /api/agent/report` | 历史兼容地址，与上方共享鉴权及去重 |
 | `GET /api/overview` | viewer Bearer，实时状态 |
 | `GET /api/history` | viewer Bearer，历史 / 统计 |
 | `GET /api/export.csv` | viewer Bearer，导出统计 |

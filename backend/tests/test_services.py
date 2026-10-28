@@ -1,4 +1,4 @@
-"""Business and SQLite regressions with no HTTP server, inventory or real agents."""
+"""Business and SQLite regressions without HTTP, inventory or real reporters."""
 
 import copy
 import csv
@@ -15,9 +15,9 @@ from unittest.mock import patch
 from monitor.exports import history_csv
 from monitor.models import Host
 from monitor.service import (
-    AgentAuthenticationError,
     IngestionDisabledError,
     MonitoringService,
+    NodeAuthenticationError,
 )
 from monitor.store import Store
 
@@ -68,7 +68,7 @@ class MonitoringServiceTests(unittest.TestCase):
             ({**report, "host": []}, "Bearer " + TOKEN),
             ([], "Bearer " + TOKEN),
         ):
-            with self.subTest(body=body), self.assertRaises(AgentAuthenticationError):
+            with self.subTest(body=body), self.assertRaises(NodeAuthenticationError):
                 self.service.ingest(body, credential, now=1000)
         self.service.demo = True
         with self.assertRaises(IngestionDisabledError):

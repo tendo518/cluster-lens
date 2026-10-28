@@ -1,4 +1,4 @@
-"""Run the offline-installed wheel outside source and exercise unchanged agent v1."""
+"""Run the offline-installed wheel outside source with the unchanged node protocol."""
 
 import json
 import os
@@ -20,7 +20,7 @@ from project_tools.configure import generate
 
 
 class ReleaseRuntimeTests(unittest.TestCase):
-    def test_extracted_center_and_standalone_agent_work_without_the_source_tree(self):
+    def test_installed_center_and_standalone_reporter_support_both_endpoints(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             release, runtime, private = (
@@ -101,12 +101,15 @@ class ReleaseRuntimeTests(unittest.TestCase):
                         (
                             "import json, runpy, sys, time, uuid; "
                             "agent=runpy.run_path(sys.argv[1]); "
-                            "config=agent['load_agent_config'](sys.argv[2]); "
+                            "config=agent['load_reporter_config'](sys.argv[2]); "
                             "report={'version':1,'host':config['host'],'interval':30, "
                             "'report_id':str(uuid.uuid4()),'collected_at':time.time(), "
                             "'system':{'cpu_percent':0},'gpus':[]}; "
                             "result=agent['send_report'](config,report); "
-                            "assert result['accepted'] is True"
+                            "assert result['accepted'] is True; "
+                            "config['url']=config['url'].replace('/api/agent/report','/api/node/report'); "
+                            "duplicate=agent['send_report'](config,report); "
+                            "assert duplicate['duplicate'] is True and duplicate['accepted'] is False"
                         ),
                         str(release / "agent.py"),
                         str(agent_file),

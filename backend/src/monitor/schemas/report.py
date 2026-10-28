@@ -1,4 +1,4 @@
-"""Version 1 agent report: the runtime validator and offline schema source.
+"""Version 1 node report: the runtime validator and offline schema source.
 
 Unknown fields are ignored, not trusted as host identity. Missing optional metrics
 become null, while explicit null lists/strings and coerced numbers are rejected.

@@ -15,8 +15,9 @@ frontend/                     # 独立 npm lock、strict TypeScript、Vite
   src/                        # API / auth / state / selectors / views / navigation
   public/ / scripts/ / tests/
   dist/                       # 构建输出，不入库
-agents/python/agent.py        # 3.6+、标准库、单文件
-agents/tests/
+node_reporter/                # Node Reporter / 节点上报程序
+  python/reporter.py          # 3.6+、标准库、单文件
+  tests/
 contracts/                    # 共享 JSON fixtures 与导出 schema
 project_tools/                # configure / check-config / describe / assets / build
                               # prepare-wheels / schemas
@@ -38,8 +39,8 @@ tests/                        # 跨组件与已安装发行包验收
 | 依赖 | 应用 uv.lock / 前端 npm lock；显式获取，离线装配和安装 |
 | 安装工具 | 标准 venv / ensurepip + 随包锁定 pip；不额外分发 uv，不复制 venv |
 | 发布格式 | format 2；保留三个产物文件名，明确不兼容 v1 安装语义 |
-| Python agent | 独立脚本 / 配置 / 报告 fixtures，节点无需 Node、uv 或后端依赖 |
-| Node agent | 本版本明确不实现；能力只声明 python，未知选择失败而非回退 |
+| Python 节点上报程序 | 独立脚本 / 配置 / 报告 fixtures，节点无需 Node.js、uv 或后端依赖 |
+| Node.js 节点上报程序 | 本版本明确不实现；能力只声明 python，未知选择失败而非回退 |
 | Caddy / proxy | 本版本明确不引入；沿用直达 HTTP(S) 上报，不自动改 TLS / 域名 |
 
 ## 验收门槛
@@ -47,8 +48,8 @@ tests/                        # 跨组件与已安装发行包验收
 - [x] 应用独立环境下构建、测试；前端独立锁和构建。
 - [x] 离线安装后的中心在源码树外以 `-I` 启动，使用 wheel 内资源；完整浏览器回归。
 - [x] 格式、目标、摘要、缺失依赖、链接、坏包、嵌套模块和资源 receipt 测试。
-- [x] 独立标准库 agent 向已安装中心真实回环上报。
+- [x] 独立标准库节点上报程序向已安装中心真实回环上报。
 - [x] API / 配置 / 数据库 / NULL / 历史时长 / CSV 与 UI 兼容回归。
 - [x] 外部控制器使用公开 CLI / 格式契约；实际离线 venv、假服务管理器驱动激活、回退、中断恢复和历史保留。
 
-停止边界：未执行生产升级、账户迁移、系统 Python 安装或反向代理变更。其他平台与 Python 版本、Node agent、自动环境垃圾回收均不是本版本承诺。
+停止边界：未执行生产升级、账户迁移、系统 Python 安装或反向代理变更。其他平台与 Python 版本、Node.js 节点上报程序、自动环境垃圾回收均不是本版本承诺。

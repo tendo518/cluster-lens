@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 from fastapi.routing import APIRoute
 from monitor.api.app import RawPathRouting
-from monitor.service import AgentAuthenticationError, IngestionDisabledError
+from monitor.service import IngestionDisabledError, NodeAuthenticationError
 from starlette.exceptions import HTTPException
 from starlette.requests import ClientDisconnect
-from test_api_contract import NOW, LoopbackCase, report
+from test_api_contract import ALPHA, BETA, NOW, LoopbackCase, report
 
 
 class RouteContractTests(LoopbackCase):
@@ -45,6 +45,8 @@ class RouteContractTests(LoopbackCase):
                 route = routes[path, reads]
                 self.assertFalse(inspect.iscoroutinefunction(route.endpoint))
         report_route = routes["/api/agent/report", frozenset({"POST"})]
+        canonical_report = routes["/api/node/report", frozenset({"POST"})]
+        self.assertIs(canonical_report.endpoint, report_route.endpoint)
         self.assertTrue(inspect.iscoroutinefunction(report_route.endpoint))
         # Each API has its own endpoint, not multiple registrations of a common
         # dispatcher. Only HTML aliases and static file routes share a handler.
@@ -78,9 +80,10 @@ class RouteContractTests(LoopbackCase):
         self.assertIs(required.dependencies[0].call, dependency)
         for path in ("/healthz", "/", "/favicon.svg", "/brand-icon.png", "/app.js"):
             self.assertEqual(routes[path, reads].dependant.dependencies, [])
-        self.assertEqual(
-            routes["/api/agent/report", frozenset({"POST"})].dependant.dependencies, []
-        )
+        for path in ("/api/node/report", "/api/agent/report"):
+            self.assertEqual(
+                routes[path, frozenset({"POST"})].dependant.dependencies, []
+            )
         self.assertEqual(
             routes["/{path:path}", frozenset({"POST"})].dependant.dependencies, []
         )
@@ -116,7 +119,7 @@ class RouteContractTests(LoopbackCase):
             overview.assert_not_called()
             history.assert_not_called()
         self.assert_json(self.get("/healthz", token=None), 200, {"status": "ok"})
-        # Agent ingestion must never depend on the viewer authentication chain.
+        # Node reporting must never depend on the viewer authentication chain.
         with patch("monitor.service.time.time", return_value=NOW):
             self.assert_json(
                 self.post(report()),
@@ -126,7 +129,7 @@ class RouteContractTests(LoopbackCase):
         self.assertTrue(
             {
                 HTTPException,
-                AgentAuthenticationError,
+                NodeAuthenticationError,
                 IngestionDisabledError,
                 ValueError,
                 ClientDisconnect,
@@ -135,6 +138,35 @@ class RouteContractTests(LoopbackCase):
             }
             <= self.server.app.exception_handlers.keys()
         )
+
+    def test_canonical_and_legacy_endpoints_share_authentication_and_deduplication(
+        self,
+    ):
+        paths = ("/api/node/report", "/api/agent/report")
+        for path in paths:
+            self.assert_error(
+                self.post(report(), token="wrong", path=path), 401, "无效的节点上报身份"
+            )
+            self.assert_error(
+                self.request("POST", path), 411, "需要有效的 Content-Length"
+            )
+        with patch("monitor.service.time.time", return_value=NOW):
+            for host, token, first, second in (
+                ("alpha", ALPHA, *paths),
+                ("beta", BETA, *reversed(paths)),
+            ):
+                payload = report(host=host)
+                self.assert_json(
+                    self.post(payload, token=token, path=first),
+                    200,
+                    {"accepted": True, "duplicate": False, "server_time": NOW},
+                )
+                self.assert_json(
+                    self.post(payload, token=token, path=second),
+                    200,
+                    {"accepted": False, "duplicate": True, "server_time": NOW},
+                )
+        self.assertEqual(set(self.store.latest()), {"alpha", "beta"})
 
     def test_sync_read_routes_run_service_work_in_framework_workers(self):
         workers = []
@@ -186,6 +218,9 @@ class RouteContractTests(LoopbackCase):
             "/api/agent%2freport",
             "/api/%61gent/report",
             "/api/agent/report%2f",
+            "/api/node%2freport",
+            "/api/%6eode/report",
+            "/api/node/report%2f",
         ):
             with self.subTest(path=path):
                 self.assert_error(

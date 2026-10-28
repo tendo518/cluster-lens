@@ -1,26 +1,28 @@
 # 模块通信与集成契约
 
-本文描述当前 FastAPI / Uvicorn 中心、模块化前端和独立 Python agent 的通信边界。配置与报告保持 version=1；依赖安装语义使用新版 release format=2，控制端仍显式识别旧 v1。Node agent 不在当前实现范围。
+本文描述当前 FastAPI / Uvicorn 中心、模块化前端和独立 Python 节点上报程序的通信边界。配置与报告保持 version=1；依赖安装语义使用新版 release format=2，控制端仍显式识别旧 v1。Node.js 节点上报程序不在当前实现范围。
+
+组件统一称为 Node Reporter / 节点上报程序。HTTP 路径、字段、产物和 schema 文件名中的旧拼写是兼容标识，不是组件名称，见[术语与兼容标识](integration.md#术语与兼容标识)。
 
 ## 1. 通信总览
 
 | 调用方 → 被调用方 | 当前通道 | 身份 / 数据边界 |
 | --- | --- | --- |
 | 浏览器 → 中心 | 同源 HTTP GET，JSON / CSV | viewer Bearer；只读监控接口 |
-| host agent → 中心 | HTTP(S) POST JSON | 每节点独立 Bearer，只能上报配置中的自身身份 |
+| 节点上报程序 → 中心 | HTTP(S) POST JSON | 每节点独立 Bearer，只能上报配置中的自身身份 |
 | HTTP 适配器 → 业务服务 | 进程内 Python 调用 | 已解析的参数 / JSON；业务不依赖请求对象 |
 | 业务服务 → Store | 进程内调用，SQLite 事务 | 规范化快照与聚合查询，不传 HTTP 状态码 |
 | 生命周期调度器 → 业务服务 | 单进程后台调用 | 超时判定、演示更新、保留期维护 |
 | 部署工程 → 配置 / 发布工具 | 显式 CLI、JSON 与文件产物 | 公开节点信息和站点配置；不传 SSH 变量到运行模型 |
 | 部署工程 → 受管节点 | SSH / 文件分发 / 服务管理 | 这是部署通道，不是运行期监控通道 |
 
-外部稳定接口是 CLI、配置、HTTP 和发布产物，不是内部 Python 类名。前端、中心和 agent 可以有不同依赖，但必须遵守对应协议。
+外部稳定接口是 CLI、配置、HTTP 和发布产物，不是内部 Python 类名。前端、中心和节点上报程序可以有不同依赖，但必须遵守对应协议。
 
 ## 2. 浏览器 API（当前）
 
 - 页面、受限静态资源和公开 UI / 图标无需登录，不包含真实指标或凭据。
 - 浏览器验证成功后在 localStorage 保存 viewer token，后续请求使用 `Authorization: Bearer <token>`；不把 token 放 URL 或 Cookie。
-- viewer 令牌不能上报数据，agent 令牌不能读取监控数据。
+- viewer 令牌不能上报数据，节点上报令牌不能读取监控数据。
 - `GET /healthz` 仅返回 `{"status":"ok"}`，不证明所有节点在线。
 - `GET /api/overview` 返回 hosts、mode、demo、interval、stale_after、retention_days、collecting、last_cycle、server_time。
 - `GET /api/runtime` 供安装器确认 application、version、pid、release_id；始终要求 viewer 身份，即使 demo 的其他读取允许无令牌。没有文件路径、凭据或数据库内容。
@@ -33,23 +35,23 @@ HEAD 对相同资源返回 GET 的状态和头部，但不发送响应体。当�
 
 浏览器 UI 行为见[使用指南](user-guide.md)。TypeScript 前端只通过这些 API 通信，不直接读取 SQLite、server.json 或后端源码。普通轮询不保存令牌；`hqlab-monitor-auth-revision` 是无秘密的变更标记，不是服务器会话标识。
 
-## 3. agent 配置与报告（当前 version=1）
+## 3. 节点上报程序配置与报告（当前 version=1）
 
 ### 节点配置
 
 部署方仅把对应节点的私密 JSON 发送给该节点：version、host、url、token、interval、timeout，可选 ca_file。字段限制见[配置参考](configuration.md)。配置文件不含 viewer token、其他节点令牌或 SSH 私钥。
 
-Python agent 本机采集后发送一次，退出状态表示本次采集 / 上报是否成功；周期调度和防止重叠由部署方负责。agent 忽略代理环境变量、拒绝重定向并验证 TLS。错误日志不得包含令牌或 Authorization。
+Python 节点上报程序本机采集后发送一次，退出状态表示本次采集 / 上报是否成功；周期调度和防止重叠由部署方负责。节点上报程序忽略代理环境变量、拒绝重定向并验证 TLS。错误日志不得包含令牌或 Authorization。
 
 ### 请求
 
-`POST /api/agent/report`：
+`POST /api/node/report`（新名称）与 `POST /api/agent/report`（历史兼容）使用同一处理器，以下规则完全相同：
 
 - `Authorization: Bearer <该节点令牌>`。
 - `Content-Type: application/json`，支持附带 charset 参数。
 - 提供正整数 Content-Length；最大 1 MiB；不接受 Transfer-Encoding 或压缩正文。
-- body 是 version=1 对象，至少包含 host、report_id、collected_at、interval；成功采集含非空 system 与 gpus 数组。collection_ms、warnings、error 按协议处理。version 必须是 JSON 整数 1，不把 true、1.0 或字符串 "1" 转换成版本号；中心和 agent 配置使用同样的严格版本规则。
-- report_id 为 UUID 字符串，agent 每次新采样生成新 ID；重试同一报告应保留 ID，不能用旧数据构造新时间冒充新采样。
+- body 是 version=1 对象，至少包含 host、report_id、collected_at、interval；成功采集含非空 system 与 gpus 数组。collection_ms、warnings、error 按协议处理。version 必须是 JSON 整数 1，不把 true、1.0 或字符串 "1" 转换成版本号；中心和节点上报程序配置使用同样的严格版本规则。
+- report_id 为 UUID 字符串，节点上报程序每次新采样生成新 ID；重试同一报告应保留 ID，不能用旧数据构造新时间冒充新采样。两个地址共享去重记录，切换地址重试也不会重复写入。
 - collected_at 为采样端 Unix 时间，与中心接收时间之差不超过 `max(60, 2 × interval)` 秒。interval 必须与中心配置一致。
 - 指标允许未知值 null，但拒绝 NaN、Infinity、越界数字、重复 GPU index、无效 PID 或超过限制的数组 / 字符串。完整规范化规则由 `backend/src/monitor/schemas/report.py` 与业务服务共同定义，`contracts/agent-report.schema.json` 从同一模型导出；协议测试固定时序与归属语义。
 - error 为非空错误说明时视为采集失败，中心清空当前指标并标记 offline，不伪造 0。
@@ -78,15 +80,15 @@ Python agent 本机采集后发送一次，退出状态表示本次采集 / 上�
 | 415 | 不支持的内容类型或压缩编码 |
 | 500 | 保存失败，不能当作成功上报 |
 
-合法 HTTP 消息进入应用后的优先级仍为：路由 → 演示策略 → 请求分帧 / 编码 → JSON 解析 → 节点鉴权 → 业务校验 / 写入。agent 不需要知道中心使用什么 Web 框架或 ORM。
+合法 HTTP 消息进入应用后的优先级仍为：路由 → 演示策略 → 请求分帧 / 编码 → JSON 解析 → 节点鉴权 → 业务校验 / 写入。节点上报程序不需要知道中心使用什么 Web 框架或 ORM。
 
 **明确的 wire-parser 差异**：h11 在应用前拒绝非法 Content-Length（空字符串、负数、+1、小数、非数字）和不支持的 Transfer-Encoding: identity，返回 parser 自己的纯文本 400，而非旧 Handler 的 JSON 411 / 400；TCP 半关闭导致正文截断时直接断开，不写历史；HTTP 头末尾的 OWS 会按标准去除，因此合法 Bearer 后的空格 / tab 不再导致 401，scheme 和内部空格仍严格。这些情况有真实 socket 回归，不通过自写 HTTP parser 恢复旧解析缺陷。应用层 JSON / 安全头保证不包含 parser 拒绝的畸形报文。
 
-### agent 一致性与选择
+### 节点上报程序一致性与选择
 
-`contracts/report-v1.json`、`contracts/agent-config-v1.json` 与独立 / 跨组件测试固定当前 agent 边界；未来若另行增加 Node，应共用这些协议和测试。schema 已由后端模型导出供构建和测试使用，但 agent 运行时不引入 schema 库或后端包。时间窗口、身份、去重、NULL、单位和累计计数差分等语义仍需测试，不能仅靠 JSON Schema 保证。
+`contracts/report-v1.json`、`contracts/agent-config-v1.json` 与独立 / 跨组件测试固定当前节点上报程序边界；未来若另行增加 Node.js 实现，应共用这些协议和测试。schema 已由后端模型导出供构建和测试使用，但节点上报程序运行时不引入 schema 库或后端包。时间窗口、身份、去重、NULL、单位和累计计数差分等语义仍需测试，不能仅靠 JSON Schema 保证。
 
-Node 版尚未实现；不能仅改解释器名称就把 Python agent 当成 Node agent，也不能假定所有节点已安装 Node。
+Node.js 版尚未实现；不能仅改解释器名称就把 Python 节点上报程序当成 Node.js 节点上报程序，也不能假定所有节点已安装 Node.js。新上报地址只可在中心与对应上报程序均已升级后显式采用；旧版本及回退注意事项见[集成契约](integration.md#术语与兼容标识)。
 
 ## 4. 中心内部调用（当前，非对外兼容承诺）
 
@@ -96,7 +98,7 @@ Node 版尚未实现；不能仅改解释器名称就把 Python agent 当成 Nod
 - `MonitorRuntime.step()` 调用业务维护；start / stop 只负责后台执行与结束，不实现 HTTP 路由。
 - `history_csv()` 对历史结果做纯格式转换，不访问数据库。
 
-这条依赖方向不随目录调整或框架替换而反转。数据库不是前端或 agent 可访问的集成接口。
+这条依赖方向不随目录调整或框架替换而反转。数据库不是前端或节点上报程序可访问的集成接口。
 
 ## 5. 构建、配置和 Ansible 边界
 
@@ -106,9 +108,9 @@ Node 版尚未实现；不能仅改解释器名称就把 Python agent 当成 Nod
 
 1. 构建工具拥有源码布局、前端构建和资源装配知识；Ansible 只消费清单和公开产物。
 2. 配置工具继续由应用拥有，schema 不在部署工程重复实现；同一节点重新生成配置不轮换令牌。
-3. 多种 agent 的选择与解释器路径属于部署配置，可逐节点覆盖；清单声明受支持的实现、运行版本、入口与摘要，应用负责验证产物能力，安装器负责验证目标机器。
+3. 节点上报实现的选择与解释器路径属于部署配置，可逐节点覆盖；清单声明受支持的实现、运行版本、入口与摘要，应用负责验证产物能力，安装器负责验证目标机器。
 4. 选择不存在的实现、缺少解释器或不兼容的版本时，在替换现有服务前失败，不自动切换语言、安装全局依赖或调整账户。
-5. 中心运行依赖只交付到中心。控制端、中心、Python agent 与 Node agent 不是同一个环境；仓库内 Python 依赖由 uv 锁定管理。
-6. 依赖交付、产物或启动约定发生不兼容变化时，先定义新的 release 格式并让控制端支持，再更新固定应用引用。旧 agent 报告协议可继续保持 version=1。
+5. 中心运行依赖只交付到中心。控制端、中心、Python 节点上报程序与未来可能的 Node.js 节点上报程序不是同一个环境；仓库内 Python 依赖由 uv 锁定管理。
+6. 依赖交付、产物或启动约定发生不兼容变化时，先定义新的 release 格式并让控制端支持，再更新固定应用引用。已有节点上报报告协议可继续保持 version=1。
 
-当前 Ansible 安装器仍只支持 Python agent。新增 Node 选择时还要检查用户服务管理助手的运行要求，不能把“Node agent 无 Python 依赖”误写为“整套部署工具不再需要 Python”。
+当前 Ansible 安装器仍只支持 Python 节点上报程序。未来新增 Node.js 实现选择时还要检查用户服务管理助手的运行要求，不能把“Node.js 节点上报程序无 Python 依赖”误写为“整套部署工具不再需要 Python”。

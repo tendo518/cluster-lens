@@ -1,4 +1,4 @@
-"""Agent conformance needs only Python's standard library, not the center venv."""
+"""Node reporter conformance uses only the standard library, not the center venv."""
 
 import ast
 import importlib.util
@@ -11,15 +11,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 PROJECT = Path(__file__).resolve().parents[2]
-AGENT = PROJECT / "agents/python/agent.py"
-spec = importlib.util.spec_from_file_location("standalone_agent_test", AGENT)
+REPORTER = PROJECT / "node_reporter/python/reporter.py"
+spec = importlib.util.spec_from_file_location("standalone_reporter_test", REPORTER)
 agent = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent)
 
 
 class StandaloneTests(unittest.TestCase):
     def test_source_targets_python36_and_imports_only_standard_library(self):
-        tree = ast.parse(AGENT.read_text(), feature_version=(3, 6))
+        tree = ast.parse(REPORTER.read_text(), feature_version=(3, 6))
         for node in ast.walk(tree):
             names = (
                 [a.name for a in node.names]
@@ -33,8 +33,8 @@ class StandaloneTests(unittest.TestCase):
         self.assertNotIn("monitor", sys.modules)
         self.assertNotIn("pydantic", sys.modules)
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "agent.py"
-            path.write_bytes(AGENT.read_bytes())
+            path = Path(temporary) / "reporter.py"
+            path.write_bytes(REPORTER.read_bytes())
             result = subprocess.run(
                 [sys.executable, "-B", "-S", str(path), "--help"],
                 cwd=temporary,
@@ -43,17 +43,54 @@ class StandaloneTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Node Reporter", result.stdout)
+            self.assertNotIn("agent", result.stdout.lower())
+
+    def test_invalid_configuration_reports_reporter_terminology_without_credentials(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "node.json"
+            path.write_text(json.dumps({"version": True, "token": "private-token"}))
+            result = subprocess.run(
+                [sys.executable, "-B", "-S", str(REPORTER), "--config", str(path)],
+                cwd=temporary,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("节点上报配置", result.stderr)
+            self.assertNotIn("private-token", result.stderr)
+            self.assertNotIn("agent", result.stderr.lower())
 
     def test_config_fixture_and_strict_versions(self):
         fixture = json.loads((PROJECT / "contracts/agent-config-v1.json").read_text())
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "agent.json"
             path.write_text(json.dumps(fixture))
-            self.assertEqual(agent.load_agent_config(path), fixture)
+            self.assertEqual(agent.load_reporter_config(path), fixture)
             for version in (True, False, "1", 1.0, 0, 2, None):
                 path.write_text(json.dumps({**fixture, "version": version}))
                 with self.subTest(version=version), self.assertRaises(ValueError):
-                    agent.load_agent_config(path)
+                    agent.load_reporter_config(path)
+
+    def test_canonical_and_legacy_report_urls_are_valid_without_accepting_aliases(self):
+        fixture = json.loads((PROJECT / "contracts/agent-config-v1.json").read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "node.json"
+            for endpoint in ("/api/node/report", "/api/agent/report"):
+                url = "https://example.org" + endpoint
+                path.write_text(json.dumps({**fixture, "url": url}))
+                self.assertEqual(agent.load_reporter_config(path)["url"], url)
+                for invalid in (
+                    url + "/",
+                    url + "?token=secret",
+                    url.replace("/api/", "/%61pi/"),
+                ):
+                    path.write_text(json.dumps({**fixture, "url": invalid}))
+                    with self.subTest(url=invalid), self.assertRaises(ValueError):
+                        agent.load_reporter_config(path)
 
     def test_success_and_failure_reports_keep_v1_null_units_and_identity(self):
         config = json.loads((PROJECT / "contracts/agent-config-v1.json").read_text())

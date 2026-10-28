@@ -38,7 +38,7 @@ def main():
     )
     wheels.add_argument("--output", type=Path, default=Path(".build/wheels"))
     assets = commands.add_parser(
-        "assets", help="装配已构建的前端到可安装运行包，不运行 Node"
+        "assets", help="装配已构建的前端到可安装运行包，不运行 Node.js"
     )
     assets.add_argument("--frontend", type=Path)
     schemas = commands.add_parser(

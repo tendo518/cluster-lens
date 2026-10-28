@@ -3,6 +3,8 @@
 import ast
 import io
 import shutil
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -27,7 +29,7 @@ class ReleaseTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
-    def test_deterministic_complete_release_and_exact_independent_agent(self):
+    def test_deterministic_complete_release_and_exact_independent_reporter(self):
         first = shared_release()
         second = self.root / "release"
         with patch(
@@ -45,7 +47,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(metadata["center"]["target"]["python"], "3.13")
         self.assertEqual(set(metadata["agents"]), {"python"})
         agent = (second / "agent.py").read_bytes()
-        self.assertEqual(agent, (PROJECT / "agents/python/agent.py").read_bytes())
+        self.assertEqual(
+            agent, (PROJECT / "node_reporter/python/reporter.py").read_bytes()
+        )
         ast.parse(agent.decode(), feature_version=(3, 6))
         for name, entry in metadata["files"].items():
             self.assertEqual(sha256((second / name).read_bytes()), entry["sha256"])
@@ -87,6 +91,7 @@ class ReleaseTests(unittest.TestCase):
                         & {
                             "project_tools",
                             "agents",
+                            "node_reporter",
                             "tests",
                             "frontend",
                             "config",
@@ -152,11 +157,50 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "符号链接"):
             list(runtime_files(package, {".py"}))
 
-    def test_agent_links_and_missing_runtime_fail_before_any_output(self):
+    def test_sdist_contains_reporter_source_and_not_the_old_source_path(self):
+        output = self.root / "sdist"
+        subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-m",
+                "hatchling",
+                "build",
+                "-t",
+                "sdist",
+                "-d",
+                str(output),
+            ],
+            cwd=PROJECT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        with tarfile.open(next(output.glob("*.tar.gz"))) as archive:
+            names = archive.getnames()
+            self.assertTrue(
+                any(n.endswith("/node_reporter/python/reporter.py") for n in names)
+            )
+            self.assertFalse(any("/agents/python/agent.py" in n for n in names))
+
+    def test_source_subdirectories_cannot_be_release_outputs(self):
+        project = self.root / "project"
+        project.mkdir()
+        with patch("project_tools.release.PROJECT", project):
+            for component in ("backend", "frontend", "node_reporter", "project_tools"):
+                output = project / component / "release"
+                with (
+                    self.subTest(component=component),
+                    self.assertRaisesRegex(ValueError, "组件源码目录"),
+                ):
+                    build(output)
+                self.assertFalse(output.exists())
+
+    def test_reporter_links_and_missing_runtime_fail_before_any_output(self):
         project = self.root / "project"
         package = project / "backend/src/monitor"
         package.mkdir(parents=True)
-        agent = project / "agents/python/agent.py"
+        agent = project / "node_reporter/python/reporter.py"
         agent.parent.mkdir(parents=True)
         agent.write_text("pass\n")
         with patch("project_tools.release.PROJECT", project):
@@ -165,7 +209,7 @@ class ReleaseTests(unittest.TestCase):
             (package / "__init__.py").write_text("")
             (package / "__main__.py").write_text("pass\n")
             agent.unlink()
-            agent.symlink_to(PROJECT / "agents/python/agent.py")
+            agent.symlink_to(PROJECT / "node_reporter/python/reporter.py")
             with self.assertRaisesRegex(ValueError, "符号链接"):
                 build(self.root / "bad-release")
         self.assertFalse((self.root / "bad-release").exists())

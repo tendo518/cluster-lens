@@ -13,7 +13,7 @@
           "maxLength": 256,
           "minLength": 16,
           "pattern": "^[!-~]+$",
-          "title": "Agent Token",
+          "title": "Node Reporter Token",
           "type": "string",
           "x-error": "每个节点必须使用独立于其他节点及 viewer_token 的有效令牌"
         },

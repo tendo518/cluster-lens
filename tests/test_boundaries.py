@@ -1,4 +1,4 @@
-"""Installed backend, independent agent and application/controller ownership boundaries."""
+"""Installed backend, independent Node Reporter and controller ownership boundaries."""
 
 import ast
 import json
@@ -47,7 +47,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertFalse((PROJECT / "monitor").exists())
         self.assertNotIn("ROOT", (PACKAGE / "paths.py").read_text())
         self.assertTrue((PROJECT / "frontend/package-lock.json").is_file())
-        self.assertTrue((PROJECT / "agents/python/agent.py").is_file())
+        self.assertTrue((PROJECT / "node_reporter/python/reporter.py").is_file())
 
     def test_business_layer_does_not_depend_on_http_or_scheduling(self):
         import sys
