@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from monitor.config import CONFIG_VERSION, load_config
+from monitor.schemas.gpu import GPU_PROVIDERS
 from monitor.ui import load_ui
 
 from .assets import assemble
@@ -62,6 +63,7 @@ def main():
                         "report_version": 1,
                         "release_formats": [2],
                         "agents": ["python"],
+                        "gpu_providers": list(GPU_PROVIDERS),
                         "prepared_environment_required": True,
                     }
                 )

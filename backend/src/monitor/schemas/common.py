@@ -55,6 +55,11 @@ def number(field, maximum, *, nullable=True):
         # Match JSON numeric types, including in internal/service invocations.
         if type(value) not in (int, float) and not (value is None and nullable):
             invalid(f"无效的数值字段：{field}")
+        # Check the original JSON number before union validation: a rejected
+        # integer can otherwise take StrictFloat's int-accepting branch and round
+        # a >2**53 value down into the allowed range. NaN/Inf also fail this test.
+        if value is not None and not 0 <= value <= maximum:
+            invalid(f"无效的数值字段：{field}")
         return value
 
     # Constrain each numeric branch. Pydantic's generic constraints on a union

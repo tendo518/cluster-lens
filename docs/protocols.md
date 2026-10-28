@@ -39,7 +39,7 @@ HEAD 对相同资源返回 GET 的状态和头部，但不发送响应体。当�
 
 ### 节点配置
 
-部署方仅把对应节点的私密 JSON 发送给该节点：version、host、url、token、interval、timeout，可选 ca_file。字段限制见[配置参考](configuration.md)。配置文件不含 viewer token、其他节点令牌或 SSH 私钥。
+部署方仅把对应节点的私密 JSON 发送给该节点：version、host、url、token、interval、timeout，可选 ca_file。字段限制见[配置参考](configuration.md)。配置文件不含 viewer token、其他节点令牌或 SSH 私钥。可选 `gpu` 明确选择 `nvidia-smi`（默认）或 `dcgm`，规则见 [GPU 数据源](gpu-metrics.md)。
 
 Python 节点上报程序本机采集后发送一次，退出状态表示本次采集 / 上报是否成功；周期调度和防止重叠由部署方负责。节点上报程序忽略代理环境变量、拒绝重定向并验证 TLS。错误日志不得包含令牌或 Authorization。
 
@@ -57,6 +57,12 @@ Python 节点上报程序本机采集后发送一次，退出状态表示本次�
 - error 为非空错误说明时视为采集失败，中心清空当前指标并标记 offline，不伪造 0。
 
 中心依据认证后的 host 绑定名称、地址和分组，不接受报告覆盖配置身份或自行宣称 online。历史时间使用中心接收时间，采样时间单独保存。
+
+### 可选 GPU 数据源字段
+
+v1 报告可附加 `gpu_provider`（`nvidia-smi` / `dcgm`），省略表示旧 NVIDIA-SMI 行为。GPU 的可选 `processes_available` 表示逐进程数据是否可读取；false 时 processes 必须为空，不能将未知解释成零进程。只有 `gpu_provider=dcgm` 可携带 `gpus[].dcgm`，其严格模型包含受支持的活跃度百分比、B/s 带宽、温度 / 时钟、ECC volatile 累计计数和最近 XID；缺失数值归一为 null，非法数值拒绝。具体字段 / 单位见 [GPU 数据源](gpu-metrics.md)与导出 schema。
+
+附加字段仅保存到当前快照 / latest JSON；不扩充 samples 历史表、曲线或 CSV，也不改变 utilization / 显存的旧统计口径。旧中心会忽略新增字段，因此先升级中心和对应 Reporter，再启用 DCGM。不得用 profiling 活跃度补齐缺少的传统 GPU utilization。
 
 ### 确认与拒绝
 

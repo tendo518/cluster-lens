@@ -51,10 +51,12 @@ npm --prefix frontend run build
 工具解释器保留其 venv 可执行路径，不对 Python 符号链接调用 resolve；现代工具不使用 `-S`。适配器清除 PYTHONPATH / PYTHONHOME。新 describe 契约：
 
 ```json
-{"contract_version":2,"application":"hqlab-monitor","config_version":1,"report_version":1,"release_formats":[2],"agents":["python"],"prepared_environment_required":true}
+{"contract_version":2,"application":"hqlab-monitor","config_version":1,"report_version":1,"release_formats":[2],"agents":["python"],"gpu_providers":["nvidia-smi","dcgm"],"prepared_environment_required":true}
 ```
 
-配置器只接收公开节点字段及 UI 输入；成功状态输出不含令牌。配置规则及凭据保留见[配置参考](configuration.md)。
+配置器只接收公开节点字段及 UI 输入；成功状态输出不含令牌。公开节点除 name / address / groups 外可包含应用拥有的 `gpu` 配置，仅分发到对应 Node Reporter；控制器不传入其他 SSH hostvars。配置规则及凭据保留见[配置参考](configuration.md)。
+
+GPU 默认 NVIDIA-SMI，DCGM 需显式选择与外部前提，见 [GPU 数据源](gpu-metrics.md)。`agents.python.gpu_providers` 声明发布能力，describe 的 `gpu_providers` 声明配置工具能力；两者缺失时仅支持 NVIDIA-SMI。不兼容选择在私密配置写入前拒绝，不允许旧程序忽略 DCGM 设置后默默采集 NVIDIA-SMI。format / 配置 / 报告版本不变，旧格式清单继续可读；新增能力字段需要理解它的部署器。
 
 ## 离线产物
 

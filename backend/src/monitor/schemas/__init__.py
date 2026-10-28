@@ -1,6 +1,7 @@
 """Shared runtime models; JSON Schemas are exportable offline, never via HTTP."""
 
 from .config import CONFIG_VERSION, ServerConfig
+from .gpu import GPUConfig
 from .report import MAX_REPORT_BYTES, REPORT_VERSION, Report
 from .ui import UIConfig
 
@@ -8,6 +9,7 @@ __all__ = [
     "CONFIG_VERSION",
     "MAX_REPORT_BYTES",
     "REPORT_VERSION",
+    "GPUConfig",
     "Report",
     "ServerConfig",
     "UIConfig",
@@ -20,5 +22,6 @@ def export_schemas():
     return {
         "server-config": ServerConfig.model_json_schema(),
         "agent-report": Report.model_json_schema(),
+        "gpu-config": GPUConfig.model_json_schema(),
         "ui-config": UIConfig.model_json_schema(),
     }

@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "processes": {
+      "default": "nvidia-smi",
+      "enum": [
+        "nvidia-smi",
+        "none"
+      ],
+      "title": "Processes",
+      "type": "string"
+    },
+    "provider": {
+      "default": "nvidia-smi",
+      "enum": [
+        "nvidia-smi",
+        "dcgm"
+      ],
+      "title": "Provider",
+      "type": "string"
+    },
+    "timeout": {
+      "default": 3,
+      "maximum": 8,
+      "minimum": 1,
+      "title": "Timeout",
+      "type": "integer",
+      "x-error": "GPU 采集配置无效"
+    },
+    "url": {
+      "default": "http://127.0.0.1:9400/metrics",
+      "title": "Url",
+      "type": "string"
+    }
+  },
+  "title": "GPUConfig",
+  "type": "object"
+}

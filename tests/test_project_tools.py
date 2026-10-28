@@ -148,6 +148,7 @@ class ProjectToolsTests(unittest.TestCase):
                 "report_version": 1,
                 "release_formats": [2],
                 "agents": ["python"],
+                "gpu_providers": ["nvidia-smi", "dcgm"],
                 "prepared_environment_required": True,
             },
         )

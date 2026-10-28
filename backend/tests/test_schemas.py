@@ -158,6 +158,18 @@ class SchemaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "无效的列表字段：processes"):
             validate_report(source, 30, 1000)
 
+    def test_large_integer_bounds_are_checked_before_float_union_rounding(self):
+        for field, maximum in (
+            ("memory_total_bytes", 2**60),
+            ("network_rx_bytes_s", 10**16),
+        ):
+            value = report()
+            value["system"][field] = maximum
+            self.assertEqual(validate_report(value, 30, 1000)["system"][field], maximum)
+            value["system"][field] = maximum + 1
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                validate_report(value, 30, 1000)
+
     def test_failure_reports_ignore_metrics_but_not_envelope_errors(self):
         for metrics in ({}, {"system": None, "gpus": "discard"}):
             source = {

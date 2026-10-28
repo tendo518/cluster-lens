@@ -17,7 +17,7 @@ ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不�
 ]
 ```
 
-地址是展示信息，不是 SSH 采集目标。每项仅接受 `name`、`address`、`groups`；名称使用 1—128 个字母、数字、点、横线或下划线，不能为 `.` / `..`，必须唯一。地址长度为 1—255；groups 是字符串数组，可省略。
+地址是展示信息，不是 SSH 采集目标。每项仅接受 `name`、`address`、`groups`、可选 `gpu`；名称使用 1—128 个字母、数字、点、横线或下划线，不能为 `.` / `..`，必须唯一。地址长度为 1—255；groups 是字符串数组，可省略。
 
 ```bash
 .venv/bin/python -m project_tools configure --nodes examples/nodes.json \
@@ -41,6 +41,7 @@ ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不�
 - `--ui`：提供文件时，按文件内容与应用默认值生成完整 UI；省略时保留现有 UI。传入内容为 `{}` 的 UI 文件可恢复默认展示。
 - 改变 interval 且未指定 stale-after 时，自动提高离线阈值到至少 `3 × interval + 10`。
 - 输入或现有凭据无效时拒绝替换，不静默轮换令牌。
+- GPU 数据源：公开节点的 `gpu` → 默认 `nvidia-smi`；移除该项恢复默认，不复用旧节点私密配置里的 DCGM 选择。见 [GPU 数据源](gpu-metrics.md)。
 
 ## 2. 中心运行配置
 
@@ -121,6 +122,8 @@ UI 文件是单独的 JSON 对象；也可以直接将同样的运行字段写�
 ## 4. 节点上报程序配置
 
 独立节点上报程序使用 `version=1`、`host`、`url`、`token`、`interval`、`timeout`；可选 `ca_file` 指定自定义 TLS CA 文件。interval 为 5—3600 秒，timeout 为 1—30 秒、默认 8。host 必须精确匹配中心名称，token 仅属于该节点。
+
+可选 `gpu` 配置默认 `{"provider":"nvidia-smi"}`；显式 `{"provider":"dcgm"}` 从本机已运行的 exporter 读取并展示额外当前指标。URL / 超时 / 逐进程补充及限制见 [GPU 数据源](gpu-metrics.md)。DCGM 配置不在中心配置中，不改变现有身份 / 令牌；旧版本不可直接选择 DCGM。
 
 ```bash
 python3 /path/to/agent.py --config /path/to/agent.json

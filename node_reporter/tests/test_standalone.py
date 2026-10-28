@@ -69,7 +69,10 @@ class StandaloneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "agent.json"
             path.write_text(json.dumps(fixture))
-            self.assertEqual(agent.load_reporter_config(path), fixture)
+            self.assertEqual(
+                agent.load_reporter_config(path),
+                {**fixture, "gpu": {"provider": "nvidia-smi"}},
+            )
             for version in (True, False, "1", 1.0, 0, 2, None):
                 path.write_text(json.dumps({**fixture, "version": version}))
                 with self.subTest(version=version), self.assertRaises(ValueError):
@@ -104,6 +107,7 @@ class StandaloneTests(unittest.TestCase):
         self.assertIs(type(result["version"]), int)
         self.assertEqual(result["version"], 1)
         self.assertEqual(result["host"], config["host"])
+        self.assertEqual(result["gpu_provider"], "nvidia-smi")
         self.assertEqual(result["gpus"][0]["memory_used_mb"], 128)
         self.assertIsNone(result["system"]["memory_percent"])
         self.assertIsNone(result["gpus"][0]["utilization"])
@@ -115,6 +119,7 @@ class StandaloneTests(unittest.TestCase):
         self.assertEqual(failed["system"], {})
         self.assertEqual(failed["gpus"], [])
         self.assertEqual(failed["error"], "fixture collection failure")
+        self.assertEqual(failed["gpu_provider"], "nvidia-smi")
 
     def test_sender_disables_proxies_redirects_and_keeps_tls_verification(self):
         # Behavioral redirect/error/size tests live in cross-component tests too.

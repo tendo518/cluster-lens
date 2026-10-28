@@ -1,6 +1,6 @@
 import { $ } from "./dom.ts";
 import type { AppState } from "./types.ts";
-import { available, allProcesses } from "./selectors.ts";
+import { available, allProcesses, processCoverage } from "./selectors.ts";
 import { nowSeconds as now } from "./state.ts";
 import {
   ago as elapsed,
@@ -72,6 +72,8 @@ export function createOverviewView(
       total = sum(mem, "memory_total_mb");
     const processes = allProcesses(state.overview),
       users = new Set(processes.map((p) => p.user).filter(Boolean));
+    const coverage = processCoverage(gpus, online),
+      unreadable = coverage.unavailable > 0 && !processes.length;
     const uniqueProcesses = new Set(processes.map((p) => `${p.host}:${p.pid}`))
       .size;
     const normal = hosts.filter((h) => h.status === "online").length,
@@ -112,8 +114,12 @@ export function createOverviewView(
       card(
         "活跃 GPU 用户",
         "users",
-        `${hosts.some(available) ? users.size : "—"}<small>位</small>`,
-        `${uniqueProcesses} 个进程 · ${processes.length} 条 GPU 关联${processes.some((p) => !p.user) ? "（含未知用户）" : ""}`,
+        `${online.length && !unreadable ? users.size : "—"}<small>位${coverage.unavailable && processes.length ? "（部分可读）" : ""}</small>`,
+        `<span class="process-summary-coverage">${
+          unreadable
+            ? `${coverage.readable ? "部分 GPU " : ""}进程信息不可读取`
+            : `${coverage.unavailable ? "已知 " : ""}${uniqueProcesses} 个进程 · ${processes.length} 条 GPU 关联${processes.some((p) => !p.user) ? "（含未知用户）" : ""}${coverage.unavailable ? " · 部分 GPU 进程信息不可读取" : ""}`
+        }</span>`,
       ),
     ].join("");
   }

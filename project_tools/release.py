@@ -21,6 +21,7 @@ from email.parser import BytesParser
 from pathlib import Path
 
 from monitor.config import CONFIG_VERSION
+from monitor.schemas.gpu import GPU_PROVIDERS
 
 from .assets import assemble
 from .files import private_write
@@ -287,6 +288,7 @@ def build(directory, wheelhouse=None, frontend=None):
             "python": {
                 "artifact": "agent.py",
                 "minimum_python": "3.6",
+                "gpu_providers": list(GPU_PROVIDERS),
                 "config_version": 1,
                 "report_version": 1,
             }

@@ -1,12 +1,14 @@
 // Real-DOM inspector refresh regressions, also reused by browser-smoke.mjs.
 // Standalone: npm run test:detail (Chrome/Chromium; no server/network).
+// MONITOR_TEST_SOURCE=1 renders a write:false in-memory test bundle and public
+// markup/CSS, leaving production dist and its build receipt untouched.
 import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
 import {mkdtempSync, readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
-import {refresh, setOverviewFixture, restoreOverviewFixture} from "./browser-fixtures.mjs";
+import {refresh, readOverview, setOverviewFixture, restoreOverviewFixture} from "./browser-fixtures.mjs";
 
 export async function checkDetailFocus({evaluate, trigger}) {
   const initial = await evaluate("({gpu:document.querySelector('#detail-gpu-filter').value,host:document.querySelector('#node-detail [data-pin-node]').dataset.pinNode,scroll:document.querySelector('#node-dialog').scrollTop})");
@@ -43,6 +45,89 @@ export async function checkDetailFocus({evaluate, trigger}) {
     assert.equal(await evaluate("document.querySelector('#detail-gpu-filter').value"), "", "all-GPU selection also survives refresh");
   } finally {
     await evaluate(`{const filter=document.querySelector('#detail-gpu-filter');filter.value=${JSON.stringify(initial.gpu)};filter.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#node-dialog').scrollTop=${initial.scroll};delete window.previousDetailFilter;}`);
+  }
+}
+
+export async function checkDetailDCGM({evaluate, trigger, overview, capture}) {
+  const original = overview || await readOverview(evaluate);
+  const initial = await evaluate("({host:document.querySelector('#node-detail [data-pin-node]').dataset.pinNode,gpu:document.querySelector('#detail-gpu-filter').value,scroll:document.querySelector('#node-dialog').scrollTop})");
+  const base = original.hosts.find(host => host.name === initial.host);
+  const host = {...base, status:"online", gpu_provider:"dcgm", gpus:[
+    {...base.gpus[0], index:0, name:'GPU <img src=x onerror="throw 1">', utilization:0, processes_available:false, processes:[], dcgm:{
+      sm_active_percent:0, sm_occupancy_percent:37.5, tensor_active_percent:null, dram_active_percent:12.5,
+      pcie_rx_bytes_s:0, pcie_tx_bytes_s:1200000, nvlink_rx_bytes_s:null,
+      memory_temperature:0, sm_clock_mhz:1410, memory_clock_mhz:0,
+      ecc_sbe_volatile:0, ecc_dbe_volatile:null, xid_last:0,
+    }},
+    {...base.gpus[1], index:1, processes_available:true, processes:[{pid:4242,user:'fixture<&>"',name:'/usr/bin/python',memory_mb:0}], dcgm:null},
+  ]};
+  const apply = async next => {
+    await setOverviewFixture(evaluate, {...original, hosts:[next]});
+    await refresh(evaluate, trigger);
+  };
+  const select = async gpu => evaluate(`{const filter=document.querySelector('#detail-gpu-filter');filter.value=${JSON.stringify(gpu)};filter.dispatchEvent(new Event('change',{bubbles:true}));}`);
+  const processText = () => evaluate("document.querySelector('#detail-gpu-filter').closest('section').textContent");
+  try {
+    await apply(host);
+    await select("");
+    assert.match(await evaluate("document.querySelector('.detail-facts').textContent"), /GPU 采集DCGM/);
+    assert.equal(await evaluate("document.querySelectorAll('.detail-dcgm').length"), 2);
+    assert.equal(await evaluate("document.querySelector('#node-grid .gpu-source-badge').textContent"), "DCGM");
+    assert.deepEqual(await evaluate("Object.fromEntries(Array.from(document.querySelector('.detail-dcgm-grid').children).map(el=>[el.querySelector('dt').textContent,el.querySelector('dd').textContent]))"), {
+      "SM 活跃率 (%)":"0.0", "SM 占用率 (%)":"37.5", "Tensor 活跃率 (%)":"—", "DRAM 活跃率 (%)":"12.5",
+      "PCIe 接收 (B/s)":"0", "PCIe 发送 (B/s)":"1,200,000", "NVLink 接收 (B/s)":"—", "NVLink 发送 (B/s)":"—",
+      "显存温度 (°C)":"0.0", "SM 时钟 (MHz)":"1,410", "显存时钟 (MHz)":"0", "ECC SBE（volatile 累计次数）":"0", "ECC DBE（volatile 累计次数）":"—", "最近 XID（错误码）":"0",
+    });
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('.detail-dcgm-grid')[1].querySelectorAll('dd')).every(el=>el.textContent==='—')"), true, "null metrics remain unknown, never zero");
+    assert.match(await evaluate("document.querySelector('.detail-dcgm-note').textContent"), /当前快照，不纳入现有历史使用率统计/);
+    assert.match(await evaluate("document.querySelector('.detail-dcgm-note').textContent"), /volatile 累计计数.*错误码.*非采样间隔内次数/);
+    assert.equal(await evaluate("document.querySelector('#node-detail img, #node-grid img')===null"), true, "GPU names stay escaped in real DOM rendering");
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('.detail-dcgm')).every(el=>el.scrollWidth<=el.clientWidth)"), true, "advanced metrics fit the inspector at the current viewport");
+    const layout = await evaluate("({viewport:innerWidth,page:document.documentElement.scrollWidth,summary:document.querySelector('#summary').scrollWidth,summaryWidth:document.querySelector('#summary').clientWidth})");
+    assert.ok(layout.page<=layout.viewport && layout.summary<=layout.summaryWidth, `DCGM partial-coverage summary must not overflow: ${JSON.stringify(layout)}`);
+    assert.equal(await evaluate("document.querySelector('.detail-gpu-header small').textContent"), "进程信息不可读取");
+    assert.match(await processText(), /已知 1 条进程记录（部分可读）/);
+    assert.match(await evaluate("document.querySelector('#node-grid .node-users').textContent"), /已知 1 个进程 · 1 位用户（部分可读）/);
+    assert.match(await evaluate("document.querySelectorAll('.summary-card')[3].textContent"), /1位（部分可读）/);
+    assert.equal(await evaluate("document.querySelector('#process-count').textContent"), "1（部分可读）");
+    await select("0");
+    assert.match(await processText(), /进程信息不可读取/);
+    assert.doesNotMatch(await processText(), /暂无可读取|python/);
+    await select("1");
+    assert.match(await processText(), /python/);
+    assert.doesNotMatch(await processText(), /进程信息不可读取/);
+    if (capture) {
+      await evaluate("document.querySelector('#node-dialog').scrollTop=0");
+      await capture();
+    }
+    // Refresh the expanded DCGM layout too, not only the legacy layout.
+    await checkDetailFocus({evaluate, trigger});
+    await select("");
+    await apply({...host, gpus:host.gpus.map(gpu=>({...gpu,processes_available:false}))});
+    assert.equal(await evaluate("document.querySelector('#process-count').textContent"), "—");
+    assert.match(await evaluate("document.querySelector('#process-rows').textContent"), /进程信息不可读取/);
+    assert.match(await evaluate("document.querySelectorAll('.summary-card')[3].textContent"), /—位.*进程信息不可读取/);
+    assert.equal(await evaluate("document.querySelector('#node-grid .node-users').textContent"), "进程信息不可读取");
+    for (const provider of ["nvidia-smi", undefined]) {
+      const legacy = {...host};
+      if (provider) legacy.gpu_provider = provider; else delete legacy.gpu_provider;
+      await apply(legacy);
+      assert.equal(await evaluate("document.querySelector('.detail-dcgm')===null && document.querySelector('#node-grid .gpu-source-badge')===null"), true);
+      assert.match(await evaluate("document.querySelector('.detail-facts').textContent"), /GPU 采集NVIDIA-SMI/);
+    }
+    for (const status of ["offline", "pending"]) {
+      await apply(host);
+      await evaluate("document.querySelector('#detail-gpu-filter').focus({preventScroll:true})");
+      await apply({...host, status});
+      assert.equal(await evaluate("document.querySelector('#node-dialog').open && document.querySelector('.detail-offline')!==null"), true);
+      assert.equal(await evaluate("document.querySelector('.detail-dcgm, .detail-gpu, .detail-system-grid, #detail-gpu-filter')===null"), true, "stale advanced and base metrics are hidden offline/pending");
+      assert.equal(await evaluate("document.querySelector('#connection-error').hidden"), true);
+    }
+  } finally {
+    await restoreOverviewFixture(evaluate);
+    await refresh(evaluate, trigger);
+    await select(initial.gpu);
+    await evaluate(`document.querySelector('#node-dialog').scrollTop=${initial.scroll}`);
   }
 }
 
@@ -91,7 +176,14 @@ async function standalone() {
       if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
       return response.result.value;
     };
-    const asset = name => readFileSync(new URL(`../dist/${name}`, import.meta.url), "utf8");
+    const source = process.env.MONITOR_TEST_SOURCE === "1";
+    const asset = name => readFileSync(new URL(`../${source ? "public" : "dist"}/${name}`, import.meta.url), "utf8");
+    let app;
+    if (source) {
+      const {build} = await import("vite");
+      const bundles = await build({configFile:false, envDir:false, envPrefix:[], publicDir:false, logLevel:"silent", build:{write:false, minify:false, target:"es2022", lib:{entry:fileURLToPath(new URL("../src/app.ts", import.meta.url)), formats:["iife"], name:"Monitor"}}});
+      app = bundles[0].output.find(output => output.type === "chunk").code;
+    } else app = asset("app.js");
     // Load the actual markup and CSS without resolving any URLs or starting a server.
     const html = asset("index.html").replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "")
       .replace("</head>", `<style>${asset("styles.css")}\n${asset("palettes.css")}</style></head>`);
@@ -102,7 +194,7 @@ async function standalone() {
     const overview = {hosts:[host], demo:true, interval:15, retention_days:30, server_time:now, last_cycle:1};
     const history = {aggregate:{}, points:[], stats:[], start:now-3600, end:now};
     await evaluate(`window.setInterval=(fn,ms)=>{if(ms===5000) window.overviewTimer=fn;return 0;};window.fetch=async path=>new Response(JSON.stringify(String(path).startsWith('/api/overview')?${JSON.stringify(overview)}:${JSON.stringify(history)}),{status:200});`);
-    await evaluate(asset("app.js"));
+    await evaluate(app);
     await evaluate("(async()=>{while(document.querySelector('#refresh-button').disabled) await new Promise(resolve=>setTimeout(resolve,10));document.querySelector('.gpu-tile[data-gpu=\"1\"]').click();})()");
     // Native dialog.close queues its event. Reopening in the same task must not
     // let that old event clear the newly selected node (no application globals).
@@ -120,6 +212,7 @@ async function standalone() {
     for (const [width, height] of [[1440, 1100], [1024, 700], [390, 700]]) {
       await cdp("Emulation.setDeviceMetricsOverride", {width,height,deviceScaleFactor:1,mobile:width < 500});
       await checkDetailFocus({evaluate, trigger:"window.overviewTimer()"});
+      await checkDetailDCGM({evaluate, trigger:"window.overviewTimer()", overview});
     }
     for (const status of ['offline', 'pending']) {
       await evaluate("document.querySelector('#detail-gpu-filter').focus({preventScroll:true})");
@@ -135,7 +228,7 @@ async function standalone() {
       assert.equal(await evaluate("document.querySelector('#detail-gpu-filter').value"), '1', 'GPU selection returns on online recovery');
     }
     assert.deepEqual(exceptions, [], "no uncaught browser exceptions");
-    console.log("PASS: queued native dialog close/reopen preserves the active node; timer-driven overview refresh preserves inspector filter/pin focus, selected GPU and scroll; no focus stealing; focused offline/pending transitions recover safely.");
+    console.log("PASS: inspector filter/pin focus and scroll survive refresh and queued close/reopen; DCGM snapshot fields preserve zero/unknown, escaping and responsive layout; process coverage/filter states stay truthful; NVIDIA-SMI omits advanced fields; offline/pending hide stale metrics.");
   } finally {
     for (const {timeout} of pending.values()) clearTimeout(timeout);
     socket?.close(); chrome?.kill("SIGTERM");

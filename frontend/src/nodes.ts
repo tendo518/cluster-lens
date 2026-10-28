@@ -1,7 +1,12 @@
 import { $, $$ } from "./dom.ts";
 import type { AppState } from "./types.ts";
 import type { Host } from "./types.ts";
-import { available, filteredHosts, pinnedHosts } from "./selectors.ts";
+import {
+  available,
+  filteredHosts,
+  pinnedHosts,
+  processCoverage,
+} from "./selectors.ts";
 import { savePinnedHosts } from "./preferences.ts";
 import { nowSeconds } from "./state.ts";
 import {
@@ -96,16 +101,24 @@ export function createNodesView(
     const good = available(host),
       system = good ? host.system : {},
       gpus = good ? host.gpus : [];
-    const processes = gpus.flatMap((g) => g.processes),
+    const coverage = processCoverage(gpus, [host]);
+    const processes = gpus.flatMap((g) =>
+        g.processes_available === false ? [] : g.processes,
+      ),
       users = [...new Set(processes.map((p) => p.user).filter(Boolean))];
     const processCount = new Set(processes.map((p) => p.pid)).size;
+    const activity = coverage.unavailable
+      ? processes.length
+        ? `已知 ${processCount} 个进程 · ${users.length} 位用户（部分可读）`
+        : `${coverage.readable ? "部分 GPU " : ""}进程信息不可读取`
+      : `${processCount} 个进程 · ${users.length} 位用户`;
     const maxDisk = system.disks?.length
       ? Math.max(...system.disks.map((d) => d.percent))
       : null;
     const model = [...new Set(gpus.map((g) => g.name))].join(" / ");
     return `<article class="node-card ${good ? "" : "offline"}${state.pinned.includes(host.name) ? " is-pinned" : ""}" data-node="${escapeHTML(host.name)}">
-    <div class="node-header"><div class="node-identity"><span class="node-icon">${icon("server")}</span><div><button class="node-name" data-open-node="${escapeHTML(host.name)}">${escapeHTML(host.name)}</button><div class="node-address mono">${escapeHTML(host.address)}</div></div></div><div class="node-actions">${statusBadge(host.status)}${pinButton(host.name)}</div></div>
-    ${good ? `<div class="node-model">${icon("chip")}<span>${escapeHTML(model || "无 GPU / 未检测到 nvidia-smi")}</span>${gpus.length ? `<span>× ${gpus.length}</span>` : ""}</div><div class="gpu-grid" style="--gpu-columns:${Math.min(gpus.length || 1, 8)};--gpu-compact-columns:${Math.min(gpus.length || 1, 4)}">${gpus.map((g) => `<button class="gpu-tile ${(g.temperature ?? 0) >= 85 ? "hot" : (g.utilization ?? 0) >= 10 ? "busy" : "idle"}" data-open-node="${escapeHTML(host.name)}" data-gpu="${g.index}" title="GPU ${g.index} · 使用率 ${pct(g.utilization)} · 显存 ${gpuMemory(g.memory_used_mb)} / ${gpuMemory(g.memory_total_mb)} · ${num(g.temperature)}°C"><span class="gpu-index">GPU ${g.index}</span><span class="gpu-util">${num(g.utilization)}<small>${finite(g.utilization) ? "%" : ""}</small></span><span class="gpu-memory">${finite(g.memory_used_mb) ? num(g.memory_used_mb / 1024, 1) : "—"}G</span></button>`).join("")}</div>${!gpus.length ? '<div class="node-offline-state"><p>CPU 节点或 GPU 指标暂不可读取</p></div>' : ""}` : `<div class="node-offline-state">${icon(host.status === "pending" ? "clock" : "server")}<div><strong>${host.status === "pending" ? "等待节点上报程序发送数据" : "节点离线或采集上报失败"}</strong><p title="${escapeHTML(host.error || "")}">${host.status === "pending" ? "收到节点上报程序数据后自动更新" : escapeHTML(host.error || "节点暂无响应")}</p></div></div>`}
+    <div class="node-header"><div class="node-identity"><span class="node-icon">${icon("server")}</span><div><button class="node-name" data-open-node="${escapeHTML(host.name)}">${escapeHTML(host.name)}</button><div class="node-address mono">${escapeHTML(host.address)}${host.gpu_provider === "dcgm" ? ' <span class="gpu-source-badge" title="GPU 采集来源：DCGM">DCGM</span>' : ""}</div></div></div><div class="node-actions">${statusBadge(host.status)}${pinButton(host.name)}</div></div>
+    ${good ? `<div class="node-model">${icon("chip")}<span>${escapeHTML(model || "无 GPU / GPU 指标不可读取")}</span>${gpus.length ? `<span>× ${gpus.length}</span>` : ""}</div><div class="gpu-grid" style="--gpu-columns:${Math.min(gpus.length || 1, 8)};--gpu-compact-columns:${Math.min(gpus.length || 1, 4)}">${gpus.map((g) => `<button class="gpu-tile ${(g.temperature ?? 0) >= 85 ? "hot" : (g.utilization ?? 0) >= 10 ? "busy" : "idle"}" data-open-node="${escapeHTML(host.name)}" data-gpu="${escapeHTML(g.index)}" title="GPU ${escapeHTML(g.index)} · 使用率 ${pct(g.utilization)} · 显存 ${gpuMemory(g.memory_used_mb)} / ${gpuMemory(g.memory_total_mb)} · ${num(g.temperature)}°C"><span class="gpu-index">GPU ${escapeHTML(g.index)}</span><span class="gpu-util">${num(g.utilization)}<small>${finite(g.utilization) ? "%" : ""}</small></span><span class="gpu-memory">${finite(g.memory_used_mb) ? num(g.memory_used_mb / 1024, 1) : "—"}G</span></button>`).join("")}</div>${!gpus.length ? '<div class="node-offline-state"><p>CPU 节点或 GPU 指标暂不可读取</p></div>' : ""}` : `<div class="node-offline-state">${icon(host.status === "pending" ? "clock" : "server")}<div><strong>${host.status === "pending" ? "等待节点上报程序发送数据" : "节点离线或采集上报失败"}</strong><p title="${escapeHTML(host.error || "")}">${host.status === "pending" ? "收到节点上报程序数据后自动更新" : escapeHTML(host.error || "节点暂无响应")}</p></div></div>`}
     <div class="node-resources">${resource("CPU", system.cpu_percent)}${resource("内存", system.memory_percent)}${resource("磁盘最高", maxDisk)}</div>
     ${host.warnings?.length ? `<div class="node-warning">${icon("alert")}<span>${escapeHTML(host.warnings[0])}${host.warnings.length > 1 ? ` · 另有 ${host.warnings.length - 1} 项提醒` : ""}</span></div>` : ""}
     <div class="node-footer"><div class="node-users">${
@@ -116,9 +129,7 @@ export function createNodesView(
               (u) =>
                 `<span class="mini-avatar" title="${escapeHTML(u)}">${escapeHTML(initials(u))}</span>`,
             )
-            .join(
-              "",
-            )}</div><span>${processCount} 个进程 · ${users.length} 位用户</span>`
+            .join("")}</div><span>${activity}</span>`
         : `<span>${host.status === "pending" ? "等待采集" : `最近在线：${ago(host.last_seen)}`}</span>`
     }</div><button class="detail-link" data-open-node="${escapeHTML(host.name)}">查看详情 ${icon("arrow")}</button></div>
   </article>`;

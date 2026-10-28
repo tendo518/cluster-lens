@@ -72,6 +72,11 @@ class MonitoringService:
                 "known_gpu_count": previous.get(host.name, {}).get(
                     "known_gpu_count", 0
                 ),
+                **{
+                    key: previous[host.name][key]
+                    for key in ("gpu_provider",)
+                    if previous.get(host.name, {}).get(key) is not None
+                },
             }
             for host in hosts
         }
@@ -195,6 +200,11 @@ class MonitoringService:
                     **{
                         key: previous.get(key)
                         for key in ("received_at", "report_id", "collected_at")
+                    },
+                    **{
+                        key: previous[key]
+                        for key in ("gpu_provider",)
+                        if previous.get(key) is not None
                     },
                 }
                 self._save(snapshot)

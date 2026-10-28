@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from monitor.config import CONFIG_VERSION, load_config, parse_config
+from monitor.schemas.gpu import parse_gpu_config
 from monitor.ui import parse_ui
 
 from .files import private_write
@@ -33,10 +34,16 @@ def generate(
         raise ValueError("上报地址端口应为 1—65535")
     if not isinstance(nodes, list) or not nodes:
         raise ValueError("节点清单必须是非空 JSON 数组")
+    gpu_settings = {}
     for node in nodes:
-        if not isinstance(node, dict) or set(node) - {"name", "address", "groups"}:
+        if not isinstance(node, dict) or set(node) - {
+            "name",
+            "address",
+            "groups",
+            "gpu",
+        }:
             raise ValueError(
-                "节点清单仅允许 name、address、groups，不接收 SSH 配置或令牌"
+                "节点清单仅允许 name、address、groups、gpu，不接收 SSH 配置或令牌"
             )
         name = node.get("name")
         if (
@@ -45,6 +52,8 @@ def generate(
             or name in (".", "..")
         ):
             raise ValueError("配置文件节点名只能包含字母、数字、点、横线和下划线")
+        if "gpu" in node:
+            gpu_settings[name] = parse_gpu_config(node["gpu"])
     directory = Path(directory)
     previous = directory / "server.json"
     old = load_config(previous)[0] if previous.exists() else {}
@@ -86,6 +95,8 @@ def generate(
             "interval": interval,
             "timeout": 8,
         }
+        if host["name"] in gpu_settings:
+            agent["gpu"] = gpu_settings[host["name"]]
         private_write(
             agents / (host["name"] + ".json"),
             json.dumps(agent, ensure_ascii=True, indent=2) + "\n",

@@ -6,7 +6,7 @@ Freshness and configured interval are validated with service-provided context.
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -76,6 +76,29 @@ class Process(WireModel):
         return value
 
 
+class DCGMMetrics(WireModel):
+    """Additional current-snapshot telemetry; never replaces utilization/history.
+
+    Ratios have already been converted to percentages by the Node Reporter.
+    Missing/unsupported/DCGM blank values are null, not measured zeroes.
+    """
+
+    sm_active_percent: number("sm_active_percent", 100) = None
+    sm_occupancy_percent: number("sm_occupancy_percent", 100) = None
+    tensor_active_percent: number("tensor_active_percent", 100) = None
+    dram_active_percent: number("dram_active_percent", 100) = None
+    pcie_rx_bytes_s: number("pcie_rx_bytes_s", 10**16) = None
+    pcie_tx_bytes_s: number("pcie_tx_bytes_s", 10**16) = None
+    nvlink_rx_bytes_s: number("nvlink_rx_bytes_s", 10**16) = None
+    nvlink_tx_bytes_s: number("nvlink_tx_bytes_s", 10**16) = None
+    memory_temperature: number("memory_temperature", 200) = None
+    sm_clock_mhz: number("sm_clock_mhz", 10**6) = None
+    memory_clock_mhz: number("memory_clock_mhz", 10**6) = None
+    ecc_sbe_volatile: integer("无效的 DCGM ECC 计数", 0, 2**53 - 1) | None = None
+    ecc_dbe_volatile: integer("无效的 DCGM ECC 计数", 0, 2**53 - 1) | None = None
+    xid_last: integer("无效的 DCGM XID", 0, 2**31 - 1) | None = None
+
+
 class GPU(WireModel):
     index: integer("GPU index 无效或重复", 0, 1023)
     name: text("GPU name", 255)
@@ -90,6 +113,14 @@ class GPU(WireModel):
     power_w: number("power_w", 100000) = None
     power_limit_w: number("power_limit_w", 100000) = None
     processes: array(Process, "processes", 4096)
+    processes_available: bool = True
+    dcgm: DCGMMetrics | None = None
+
+    @model_validator(mode="after")
+    def unavailable_processes(self):
+        if not self.processes_available and self.processes:
+            invalid("不可读取的进程列表不能包含进程")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -116,6 +147,15 @@ class Report(WireModel):
     system: described(System | None, "成功采集的上报必须包含 system")
     gpus: array(GPU, "gpus", 128)
     host: text("host", 128, minimum=1)
+    gpu_provider: Literal["nvidia-smi", "dcgm"] | None = None
+
+    @model_validator(mode="after")
+    def metric_source(self):
+        if self.gpu_provider != "dcgm" and any(
+            gpu.dcgm is not None for gpu in self.gpus
+        ):
+            invalid("DCGM 指标必须注明 dcgm 采集来源")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -176,6 +216,14 @@ class Report(WireModel):
 
     def snapshot(self):
         result = self.model_dump(exclude={"version", "host", "interval"})
+        # Additive v1 fields do not change legacy normalized snapshot shapes.
+        if self.gpu_provider is None:
+            result.pop("gpu_provider", None)
+        for gpu, source in zip(result["gpus"], self.gpus):
+            if source.dcgm is None:
+                gpu.pop("dcgm", None)
+            if "processes_available" not in source.model_fields_set:
+                gpu.pop("processes_available", None)
         if self.error:
             result["system"], result["gpus"] = {}, []
         return result

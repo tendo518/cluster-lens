@@ -1,22 +1,40 @@
 import type {
   AppState,
   Host,
+  GPU,
   Overview,
   ProcessRow,
   TimeRange,
 } from "./types.ts";
 export const available = (host: Host): boolean =>
   ["online", "warning"].includes(host.status);
+export function processCoverage(gpus: GPU[], hosts: Host[] = []) {
+  const unavailable = gpus.filter(
+    (gpu) => gpu.processes_available === false,
+  ).length;
+  // An explicitly selected DCGM source with no returned devices is not proof
+  // of zero process activity (e.g. the exporter is unavailable).
+  const missingSource = hosts.some(
+    (host) =>
+      available(host) && host.gpu_provider === "dcgm" && !host.gpus.length,
+  );
+  return {
+    readable: gpus.length - unavailable,
+    unavailable: unavailable + Number(missingSource),
+  };
+}
 export function allProcesses(overview: Overview | null): ProcessRow[] {
   return (overview?.hosts || []).filter(available).flatMap((host) =>
     host.gpus.flatMap((gpu) =>
-      gpu.processes.map((process) => ({
-        ...process,
-        host: host.name,
-        address: host.address,
-        gpu: gpu.index,
-        capacity: gpu.memory_total_mb,
-      })),
+      (gpu.processes_available === false ? [] : gpu.processes).map(
+        (process) => ({
+          ...process,
+          host: host.name,
+          address: host.address,
+          gpu: gpu.index,
+          capacity: gpu.memory_total_mb,
+        }),
+      ),
     ),
   );
 }

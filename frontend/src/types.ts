@@ -9,6 +9,22 @@ export interface GPUProcess {
   type?: string | null;
   memory_mb?: Measurement;
 }
+export interface DCGMMetrics {
+  sm_active_percent?: Measurement;
+  sm_occupancy_percent?: Measurement;
+  tensor_active_percent?: Measurement;
+  dram_active_percent?: Measurement;
+  pcie_rx_bytes_s?: Measurement;
+  pcie_tx_bytes_s?: Measurement;
+  nvlink_rx_bytes_s?: Measurement;
+  nvlink_tx_bytes_s?: Measurement;
+  memory_temperature?: Measurement;
+  sm_clock_mhz?: Measurement;
+  memory_clock_mhz?: Measurement;
+  ecc_sbe_volatile?: Measurement;
+  ecc_dbe_volatile?: Measurement;
+  xid_last?: Measurement;
+}
 export interface GPU {
   index: number;
   name: string;
@@ -22,7 +38,10 @@ export interface GPU {
   power_w?: Measurement;
   power_limit_w?: Measurement;
   fan_percent?: Measurement;
+  // Legacy collectors omit this flag; only explicit false means unreadable.
+  processes_available?: boolean;
   processes: GPUProcess[];
+  dcgm?: DCGMMetrics | null;
 }
 export interface Disk {
   mount: string;
@@ -57,6 +76,7 @@ export interface Host {
   status: HostStatus;
   system: SystemMetrics;
   gpus: GPU[];
+  gpu_provider?: "nvidia-smi" | "dcgm";
   warnings?: string[];
   error?: string | null;
   checked_at?: Measurement;

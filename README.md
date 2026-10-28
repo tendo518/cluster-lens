@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 后端 | `backend/src/monitor`，FastAPI / Uvicorn / Pydantic，SQLite WAL | CPython **3.13**；当前离线发行目标 Linux x86_64 / glibc 2.17+，SQLite 3.25+ |
 | 前端 | `frontend/src`，严格 TypeScript / Vite，原生 DOM | 构建 / 测试使用 Node.js **24+**；中心仅分发构建资源 |
-| Python 节点上报程序 | `node_reporter/python/reporter.py` | Linux / Python **3.6+** / 标准库；GPU 读取现有 nvidia-smi |
+| Python 节点上报程序 | `node_reporter/python/reporter.py` | Linux / Python **3.6+** / 标准库；GPU 默认 nvidia-smi，可显式选择本机 DCGM exporter |
 | 项目工具 | `project_tools`，公开 CLI / JSON / 发布产物 | 独立应用 uv 环境；不复用 Ansible 环境 |
 
 仅分发到节点的上报程序受单文件 / 标准库约束。后端 wheel 不包含节点上报程序、项目工具、测试、Ansible 或私密运行状态。Python 包入口 `python -m monitor`、发行标识 `hqlab-monitor` 和浏览器偏好键保持不变。
@@ -64,6 +64,7 @@ just build /absolute/releases/clusterlens
 ## 功能与安全边界
 
 - 系统 / GPU / 进程快照、节点详情、历史统计和 CSV；未知 / 离线指标保留 NULL。
+- GPU 数据源逐节点可选，默认优先 NVIDIA-SMI；DCGM 节点额外展示受支持的活跃度、带宽、ECC / XID 等当前指标，见 [GPU 数据源](docs/gpu-metrics.md)。
 - 六种配色、明暗 / 系统模式、首屏外观、个人偏好、置顶、筛选后分页、键盘与移动导航。
 - viewer 与每个节点使用独立令牌；主机身份绑定、时间窗口、UUID 去重、请求体上限、持久化后确认。
 - 采用可信内网下的简单 localStorage 登录持久化，支持跨标签退出、旧会话迁移、401 清除和网络故障保留。它不是服务端会话 / Cookie 系统；同源脚本和共享浏览器使用者可访问凭据。
@@ -84,7 +85,7 @@ just schemas           # 导出 contracts/*.schema.json
 ## 文档
 
 - [运行架构](docs/architecture.md) / [目录与构建](docs/project-layout-plan.md)
-- [配置参考](docs/configuration.md) / [使用指南](docs/user-guide.md)
+- [配置参考](docs/configuration.md) / [GPU 数据源](docs/gpu-metrics.md) / [使用指南](docs/user-guide.md)
 - [通信契约](docs/protocols.md) / [发布与集成](docs/integration.md)
 - [重构计划与完成决策](docs/architecture-plan.md) / [机器可读契约](contracts/README.md)
 

@@ -46,6 +46,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(metadata["report_version"], 1)
         self.assertEqual(metadata["center"]["target"]["python"], "3.13")
         self.assertEqual(set(metadata["agents"]), {"python"})
+        self.assertEqual(
+            metadata["agents"]["python"]["gpu_providers"], ["nvidia-smi", "dcgm"]
+        )
         agent = (second / "agent.py").read_bytes()
         self.assertEqual(
             agent, (PROJECT / "node_reporter/python/reporter.py").read_bytes()

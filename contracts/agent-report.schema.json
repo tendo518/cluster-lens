@@ -1,5 +1,277 @@
 {
   "$defs": {
+    "DCGMMetrics": {
+      "description": "Additional current-snapshot telemetry; never replaces utilization/history.\n\nRatios have already been converted to percentages by the Node Reporter.\nMissing/unsupported/DCGM blank values are null, not measured zeroes.",
+      "properties": {
+        "dram_active_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dram Active Percent",
+          "x-error": "无效的数值字段：dram_active_percent"
+        },
+        "ecc_dbe_volatile": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer",
+              "x-error": "无效的 DCGM ECC 计数"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ecc Dbe Volatile"
+        },
+        "ecc_sbe_volatile": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer",
+              "x-error": "无效的 DCGM ECC 计数"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ecc Sbe Volatile"
+        },
+        "memory_clock_mhz": {
+          "anyOf": [
+            {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Clock Mhz",
+          "x-error": "无效的数值字段：memory_clock_mhz"
+        },
+        "memory_temperature": {
+          "anyOf": [
+            {
+              "maximum": 200,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 200,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Temperature",
+          "x-error": "无效的数值字段：memory_temperature"
+        },
+        "nvlink_rx_bytes_s": {
+          "anyOf": [
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nvlink Rx Bytes S",
+          "x-error": "无效的数值字段：nvlink_rx_bytes_s"
+        },
+        "nvlink_tx_bytes_s": {
+          "anyOf": [
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nvlink Tx Bytes S",
+          "x-error": "无效的数值字段：nvlink_tx_bytes_s"
+        },
+        "pcie_rx_bytes_s": {
+          "anyOf": [
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pcie Rx Bytes S",
+          "x-error": "无效的数值字段：pcie_rx_bytes_s"
+        },
+        "pcie_tx_bytes_s": {
+          "anyOf": [
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 10000000000000000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pcie Tx Bytes S",
+          "x-error": "无效的数值字段：pcie_tx_bytes_s"
+        },
+        "sm_active_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sm Active Percent",
+          "x-error": "无效的数值字段：sm_active_percent"
+        },
+        "sm_clock_mhz": {
+          "anyOf": [
+            {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 1000000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sm Clock Mhz",
+          "x-error": "无效的数值字段：sm_clock_mhz"
+        },
+        "sm_occupancy_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sm Occupancy Percent",
+          "x-error": "无效的数值字段：sm_occupancy_percent"
+        },
+        "tensor_active_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tensor Active Percent",
+          "x-error": "无效的数值字段：tensor_active_percent"
+        },
+        "xid_last": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer",
+              "x-error": "无效的 DCGM XID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Xid Last"
+        }
+      },
+      "title": "DCGMMetrics",
+      "type": "object"
+    },
     "Disk": {
       "properties": {
         "available_bytes": {
@@ -86,6 +358,17 @@
     },
     "GPU": {
       "properties": {
+        "dcgm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DCGMMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "driver": {
           "anyOf": [
             {
@@ -243,6 +526,11 @@
           "title": "Processes",
           "type": "array",
           "x-error": "无效的列表字段：processes"
+        },
+        "processes_available": {
+          "default": true,
+          "title": "Processes Available",
+          "type": "boolean"
         },
         "temperature": {
           "anyOf": [
@@ -747,6 +1035,22 @@
       "default": null,
       "title": "Error",
       "x-error": "无效的字符串字段：error"
+    },
+    "gpu_provider": {
+      "anyOf": [
+        {
+          "enum": [
+            "nvidia-smi",
+            "dcgm"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gpu Provider"
     },
     "gpus": {
       "items": {

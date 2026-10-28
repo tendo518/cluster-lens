@@ -4,7 +4,7 @@ Node Reporter / 节点上报程序在被监控节点本机采集，再向中心�
 
 ## Python（已实现）
 
-源码为 `python/reporter.py`，Linux / Python 3.6+，只使用标准库；NVIDIA 指标通过已有的 `nvidia-smi` 获取。无需在节点安装 uv 或 Python 包。
+源码为 `python/reporter.py`，Linux / Python 3.6+，只使用标准库；GPU 默认优先使用已有的 `nvidia-smi`，可逐节点显式选择本机已准备的 DCGM exporter。无需在节点安装 uv 或后端 Python 包；DCGM 模式需要部署方另行准备额外服务，不自动安装 / 启动 / 提权。配置、进程补充与额外指标见 [GPU 数据源](../docs/gpu-metrics.md)。
 
 ```bash
 python3 node_reporter/python/reporter.py --config /path/to/node.json

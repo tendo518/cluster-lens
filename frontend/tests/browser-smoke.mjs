@@ -12,7 +12,7 @@ import {fileURLToPath} from "node:url";
 import {checkWorkspaceNavigation} from "./workspace-navigation.mjs";
 import {checkBranding} from "./branding.mjs";
 import {checkAuthentication} from "./authentication.mjs";
-import {checkDetailFocus} from "./frontend-detail.mjs";
+import {checkDetailFocus, checkDetailDCGM} from "./frontend-detail.mjs";
 import {refresh, readOverview, setOverviewFixture, restoreOverviewFixture} from "./browser-fixtures.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -277,6 +277,7 @@ try {
   await setOverviewFixture(evaluate, await readOverview(evaluate));
   try {await refresh(evaluate); await checkDetailFocus({evaluate});}
   finally {await restoreOverviewFixture(evaluate);}
+  await checkDetailDCGM({evaluate, capture:()=>screenshot("dcgm-node-inspector.png")});
   for (const scheme of ["light", "dark"]) {
     await setScheme(scheme); await checkAppearance(scheme, `${scheme} inspector`);
     await screenshot(`node-inspector-${scheme}.png`);
