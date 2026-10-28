@@ -9,10 +9,11 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from .collector import Collector
 from .config import load_config, valid_token
+from .lifecycle import MonitorRuntime
 from .paths import ROOT
 from .server import MonitorServer
+from .service import MonitoringService
 from .store import Store
 from .ui import load_ui, parse_ui
 
@@ -103,7 +104,7 @@ def main():
         if args.demo:
             LOG.info("演示模式：生成最近 24 小时模拟历史，不会连接真实服务器")
             seed_demo(store, hosts)
-        collector = Collector(
+        service = MonitoringService(
             hosts,
             store,
             interval=interval,
@@ -112,7 +113,8 @@ def main():
             demo=args.demo,
             credentials=credentials,
         )
-        server = MonitorServer((args.host, args.port), collector, token, ui=ui)
+        server = MonitorServer((args.host, args.port), service, token, ui=ui)
+        runtime = MonitorRuntime(service)
     except (ValueError, OSError, sqlite3.Error) as exc:
         parser.exit(1, f"启动失败：{exc}\n请检查 --config 指定的配置及运行环境。\n")
     address, port = server.server_address[:2]
@@ -134,12 +136,14 @@ def main():
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    collector.start()
     try:
+        runtime.start()
         server.serve_forever(poll_interval=0.3)
     finally:
-        collector.stop()
-        server.server_close()
+        try:
+            runtime.stop()
+        finally:
+            server.server_close()
 
 
 if __name__ == "__main__":

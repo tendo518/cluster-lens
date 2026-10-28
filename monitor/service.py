@@ -1,13 +1,20 @@
-"""Receive local-agent reports and mark silent nodes offline. Never opens SSH."""
+"""Monitoring use cases, independent of HTTP handlers and background scheduling."""
 
 import hmac
-import logging
 import threading
 import time
+from copy import deepcopy
 
+from .history import assemble_history, history_bucket, history_range
 from .protocol import validate_report
 
-LOG = logging.getLogger(__name__)
+
+class AgentAuthenticationError(PermissionError):
+    """The presented credential does not identify the report's configured node."""
+
+
+class IngestionDisabledError(PermissionError):
+    """Synthetic workspaces cannot receive real reports."""
 
 
 def classify(snapshot):
@@ -25,7 +32,7 @@ def classify(snapshot):
     return snapshot
 
 
-class Collector:
+class MonitoringService:
     def __init__(
         self,
         hosts,
@@ -42,7 +49,6 @@ class Collector:
         self.retention_days, self.demo = retention_days, demo
         self.credentials = credentials or {}
         self.lock = threading.Lock()
-        self.stop_event = threading.Event()
         self.collecting = False
         self.last_cycle = None
         self.started_at = time.time()
@@ -67,22 +73,11 @@ class Collector:
             }
             for host in hosts
         }
-        self.thread = threading.Thread(
-            target=self.run, daemon=True, name="monitor-receiver"
-        )
 
-    def start(self):
-        self.thread.start()
-
-    def stop(self):
-        self.stop_event.set()
-        if self.thread.is_alive():
-            self.thread.join(timeout=5)
-
-    def overview(self):
+    def overview(self, now=None):
         with self.lock:
             return {
-                "hosts": list(self.snapshots.values()),
+                "hosts": deepcopy(list(self.snapshots.values())),
                 "demo": self.demo,
                 "mode": "demo" if self.demo else "push",
                 "stale_after": self.stale_after,
@@ -90,8 +85,32 @@ class Collector:
                 "retention_days": self.retention_days,
                 "collecting": self.collecting,
                 "last_cycle": self.last_cycle,
-                "server_time": time.time(),
+                "server_time": time.time() if now is None else now,
             }
+
+    def history(self, start=None, end=None, host=None, now=None):
+        start, end = history_range(start, end, time.time() if now is None else now)
+        if host and host not in self.host_map:
+            raise ValueError("未知的服务器")
+        names = [host] if host else list(self.host_map)
+        bucket = history_bucket(start, end, self.interval)
+        rows = self.store.query_history(start, end, bucket, host or None, names)
+        return assemble_history(start, end, self.interval, bucket, names, **rows)
+
+    def prune(self):
+        self.store.prune(self.retention_days)
+
+    def ensure_ingestion_enabled(self):
+        if self.demo:
+            raise IngestionDisabledError("演示模式不接受真实节点上报")
+
+    def ingest(self, payload, authorization, now=None):
+        """Authenticate, validate, persist, then publish and acknowledge a report."""
+        self.ensure_ingestion_enabled()
+        name = payload.get("host") if isinstance(payload, dict) else None
+        if not self.authorized(name, authorization):
+            raise AgentAuthenticationError("无效的节点上报身份")
+        return self.accept_report(payload, now)
 
     def authorized(self, name, header):
         token = self.credentials.get(name) if isinstance(name, str) else None
@@ -114,11 +133,12 @@ class Collector:
         self.last_cycle = snapshot["checked_at"]
 
     def accept(self, snapshot):
-        """Internal synthetic snapshots only; HTTP ingestion uses accept_report."""
+        """Internal synthetic snapshots only; external ingestion uses ingest()."""
         with self.lock:
-            self._save(dict(snapshot))
+            self._save(deepcopy(snapshot))
 
     def accept_report(self, payload, now=None):
+        """Apply an already authenticated report; transports must use ingest()."""
         now = time.time() if now is None else now
         report = validate_report(payload, self.interval, now)
         host = self.host_map.get(payload.get("host"))
@@ -176,27 +196,3 @@ class Collector:
                     },
                 }
                 self._save(snapshot)
-
-    def run(self):
-        last_prune = 0
-        next_demo = 0
-        while not self.stop_event.is_set():
-            now = time.time()
-            try:
-                if self.demo and now >= next_demo:
-                    from .demo import demo_snapshot
-
-                    self.collecting = True
-                    for host in self.hosts:
-                        self.accept(demo_snapshot(host, now))
-                    next_demo = now + self.interval
-                elif not self.demo:
-                    self.tick(now)
-                if now - last_prune > 3600:
-                    self.store.prune(self.retention_days)
-                    last_prune = now
-            except Exception:
-                LOG.exception("处理节点上报 / 历史维护失败")
-            finally:
-                self.collecting = False
-            self.stop_event.wait(min(5, self.interval))

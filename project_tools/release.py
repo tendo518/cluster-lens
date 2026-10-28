@@ -39,9 +39,12 @@ def server_bundle():
 def build(directory):
     directory = Path(directory)
     # Build everything first; no credentials are ever inspected by this command.
+    agent = PROJECT / "agents/python/agent.py"
+    if agent.is_symlink():
+        raise ValueError("发布包不允许符号链接：agents/python/agent.py")
     files = {
         "server.tar.gz": server_bundle(),
-        "agent.py": (PROJECT / "monitor/remote_probe.py").read_bytes(),
+        "agent.py": agent.read_bytes(),
     }
     manifest = {
         "format_version": 1,

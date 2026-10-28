@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from monitor import remote_probe
+from _agent import remote_probe
 from monitor.config import load_config
 from monitor.paths import ROOT
 from project_tools.configure import generate
@@ -138,8 +138,9 @@ class ProjectToolsTests(unittest.TestCase):
                         archive.extractfile(member).read().decode(),
                         feature_version=(3, 9),
                     )
+            self.assertNotIn("monitor/remote_probe.py", names)
             self.assertEqual(
-                archive.extractfile("monitor/remote_probe.py").read(),
+                (ROOT / "agents/python/agent.py").read_bytes(),
                 (output / "agent.py").read_bytes(),
             )
 
@@ -162,6 +163,20 @@ class ProjectToolsTests(unittest.TestCase):
             )
             with self.assertRaises(ValueError):
                 server_bundle()
+
+    def test_agent_release_does_not_follow_symlinks(self):
+        project = Path(self.temp.name) / "linked-project"
+        agent_dir = project / "agents/python"
+        agent_dir.mkdir(parents=True)
+        target = project / "secret.txt"
+        target.write_text("not an agent")
+        (agent_dir / "agent.py").symlink_to(target)
+        with (
+            patch("project_tools.release.PROJECT", project),
+            self.assertRaises(ValueError),
+        ):
+            build(Path(self.temp.name) / "bad-release")
+        self.assertFalse((Path(self.temp.name) / "bad-release").exists())
 
     def test_cli_retains_config_parameters_and_does_not_print_tokens(self):
         nodes = Path(self.temp.name) / "nodes.json"

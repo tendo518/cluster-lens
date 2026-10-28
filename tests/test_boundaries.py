@@ -1,4 +1,4 @@
-"""The application must run without infrastructure tooling or installed packages."""
+"""Application/infrastructure separation and the current source-release boundary."""
 
 import ast
 import os
@@ -41,6 +41,31 @@ class RuntimeBoundaryTests(unittest.TestCase):
         ):
             self.assertFalse((ROOT / "monitor" / (name + ".py")).exists())
 
+    def test_business_layer_is_independent_of_transport_and_scheduling(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-S",
+                "-c",
+                (
+                    "import monitor.service, sys; "
+                    "assert not {'http.server', 'monitor.server', 'monitor.lifecycle'} "
+                    "& sys.modules.keys()"
+                ),
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        transport = ast.parse((ROOT / "monitor/server.py").read_text())
+        for node in ast.walk(transport):
+            if isinstance(node, ast.Attribute):
+                self.assertNotIn(
+                    node.attr, ("store", "query_history", "execute", "executemany")
+                )
+
     def test_imports_work_with_site_packages_disabled(self):
         result = subprocess.run(
             [
@@ -48,7 +73,8 @@ class RuntimeBoundaryTests(unittest.TestCase):
                 "-S",
                 "-c",
                 (
-                    "import monitor.collector, monitor.config, monitor.demo, "
+                    "import monitor.service, monitor.lifecycle, monitor.config, "
+                    "monitor.demo, monitor.history, monitor.exports, "
                     "monitor.server, monitor.store; import sys; "
                     "assert not any(n == 'ansible' or n.startswith('monitor_deploy') "
                     "for n in sys.modules)"
@@ -60,6 +86,33 @@ class RuntimeBoundaryTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_host_script_has_only_stdlib_imports_and_runs_outside_backend(self):
+        source = (ROOT / "agents/python/agent.py").read_text()
+        tree = ast.parse(source, feature_version=(3, 6))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                self.assertEqual(node.level, 0)
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                self.assertIn(name.split(".")[0], sys.stdlib_module_names)
+        with tempfile.TemporaryDirectory() as temporary:
+            agent = Path(temporary) / "agent.py"
+            agent.write_text(source)
+            result = subprocess.run(
+                [sys.executable, "-B", "-S", str(agent), "--help"],
+                cwd=temporary,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("--config", result.stdout)
+        self.assertFalse((ROOT / "monitor/remote_probe.py").exists())
 
     def test_standalone_project_copy_builds_and_configures_without_parent_tree(self):
         with tempfile.TemporaryDirectory() as temporary:

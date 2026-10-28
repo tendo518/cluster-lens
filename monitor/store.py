@@ -1,7 +1,6 @@
 """SQLite history. Missing / failed measurements are NULL, never zero utilization."""
 
 import json
-import math
 import sqlite3
 import threading
 import time
@@ -121,11 +120,8 @@ class Store:
                 (time.time() - retention_days * 86400,),
             )
 
-    def history(self, start, end, host=None, names=()):
-        bucket = max(
-            self.interval,
-            math.ceil((end - start) / 180 / self.interval) * self.interval,
-        )
+    def query_history(self, start, end, bucket, host=None, names=()):
+        """Return aggregate facts from one read snapshot; service owns range policy."""
         where = "ts >= ? AND ts < ?"
         params = [start, end]
         if host:
@@ -134,7 +130,11 @@ class Store:
         elif names:
             where += " AND host IN (" + ",".join("?" for _ in names) + ")"
             params.extend(names)
+        else:
+            where += " AND 0"
         with self.connection() as db:
+            # Keep the graph, per-host rows and totals on the same WAL snapshot.
+            db.execute("BEGIN")
             series = db.execute(
                 f"""
                 SELECT CAST((ts - ?) / ? AS INTEGER) AS bucket,
@@ -178,60 +178,8 @@ class Store:
                 ).fetchone()
             )
 
-        def finish(row, host_count=1):
-            result = dict(row)
-            observed = result.get("observed_seconds") or 0
-            result["availability"] = (
-                100 * (result.get("online_seconds") or 0) / observed
-                if observed
-                else None
-            )
-            result["coverage"] = min(
-                100, 100 * observed / ((end - start) * max(1, host_count))
-            )
-            for key in ("busy_gpu_hours", "observed_gpu_hours"):
-                result[key] = result.get(key) or 0
-            return result
-
-        by_host = {row["host"]: finish(row) for row in rows}
-        expected = [host] if host else list(names) or sorted(by_host)
-        stats = [
-            by_host.get(
-                name,
-                {
-                    "host": name,
-                    "samples": 0,
-                    "coverage": 0,
-                    "availability": None,
-                    "busy_gpu_hours": 0,
-                    "observed_gpu_hours": 0,
-                },
-            )
-            for name in expected
-        ]
-        indexed = {row["bucket"]: dict(row) for row in series}
-        points = []
-        if series:
-            for index in range(math.ceil((end - start) / bucket)):
-                row = indexed.get(index, {})
-                points.append(
-                    {
-                        "ts": start
-                        + index * bucket
-                        + min(bucket, end - start - index * bucket) / 2,
-                        **{
-                            key: row.get(key)
-                            for key in ("cpu", "memory", "gpu", "gpu_memory")
-                        },
-                    }
-                )
         return {
-            "start": start,
-            "end": end,
-            "bucket_seconds": bucket,
-            "points": points,
-            "stats": stats,
-            "aggregate": finish(total, len(expected)),
-            "busy_threshold": 10,
-            "sample_interval": self.interval,
+            "series": [dict(row) for row in series],
+            "rows": [dict(row) for row in rows],
+            "total": total,
         }

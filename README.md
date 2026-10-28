@@ -12,14 +12,18 @@
 
 当前版本的中心与采集端仅使用 Python 标准库；前端是原生 JS / CSS / SVG，无需 pip、Node 构建或第三方运行依赖。本项目以源码和运行归档发行，不提供 `pip install .` 安装方式。
 
-纯标准库是节点 agent 的约束，不是中心的长期限制。后续框架、模块化与发布方式的改进见[架构演进计划](docs/architecture-plan.md)；计划尚未实施，不改变本页的当前运行方式。
+纯标准库是节点 agent 的约束，不是中心的长期限制。中心已分离业务服务、存储、HTTP 适配与后台调度，见[当前架构](docs/architecture.md)。[架构演进计划](docs/architecture-plan.md)记录分阶段进度；FastAPI 等框架替换尚未实施，不改变本页的当前运行方式。
 
-以下命令在应用仓库根目录执行。
+开发环境由应用自己的 `pyproject.toml`、`uv.lock` 和 `.python-version` 管理，与 Ansible 的环境分离。开发解释器固定为 Python 3.13，当前发布包仍支持表中的中心 / agent 运行版本。以下命令在应用仓库根目录执行：
+
+```bash
+uv sync --frozen
+```
 
 ## 本地体验
 
 ```bash
-python3 -m monitor --demo
+uv run --frozen python -m monitor --demo
 ```
 
 访问 `http://127.0.0.1:8080`。演示只生成模拟指标，数据库为 `data/monitor-demo.sqlite3`，不读取真实节点配置、不接收真实上报。
@@ -27,7 +31,7 @@ python3 -m monitor --demo
 应用默认使用 ClusterLens 标题与字母图标。可以直接替换站点展示配置：
 
 ```bash
-python3 -m monitor --demo --ui examples/ui.json
+uv run --frozen python -m monitor --demo --ui examples/ui.json
 ```
 
 ## 建立真实监控
@@ -38,20 +42,20 @@ python3 -m monitor --demo --ui examples/ui.json
 4. 启动中心，再在节点执行采集器；周期调度和服务账户由部署方管理。
 
 ```bash
-python3 -m project_tools configure \
+uv run --frozen python -m project_tools configure \
   --nodes examples/nodes.json \
   --url http://127.0.0.1:8080/api/agent/report \
   --ui examples/ui.json --output config/local
 
-python3 -m project_tools check-config config/local/server.json
-python3 -m monitor --config config/local/server.json \
+uv run --frozen python -m project_tools check-config config/local/server.json
+uv run --frozen python -m monitor --config config/local/server.json \
   --host 127.0.0.1 --port 8080 --db data/monitor.sqlite3
 ```
 
 上面的 loopback 地址仅适合单机验证；多机环境应配置实际可达的 URL、监听地址、TLS 和防火墙。在另一终端本机验证其中一个示例节点：
 
 ```bash
-python3 monitor/remote_probe.py --config config/local/agents/node-a.json
+python3 agents/python/agent.py --config config/local/agents/node-a.json
 ```
 
 授权查看者通过生成的 `viewer-token` 登录；不要把令牌写入 URL、命令行或版本库。重复生成会保留已有 viewer / 同名节点令牌；不要删除配置目录来更新代码。
@@ -67,14 +71,21 @@ python3 monitor/remote_probe.py --config config/local/agents/node-a.json
 ## 构建与测试
 
 ```bash
-python3 -B -S -m project_tools build --output dist
-python3 -S -m unittest discover -s tests -v
-node tests/browser-smoke.mjs
+uv run --frozen python -B -S -m project_tools build --output dist
+uv run --frozen python -S -m unittest discover -s tests -v
+uv run --frozen node tests/browser-smoke.mjs
 ```
 
-发布输出为 `server.tar.gz`、`agent.py`、`release.json`，不含配置、数据库、测试或部署工具。中心在归档解压根目录运行 `python3 -m monitor`，采集端执行独立 `agent.py`。集成方应使用[公开 CLI 和产物契约](docs/integration.md)，不导入应用内部模块。
+Python host 脚本源码位于 `agents/python/agent.py`，独立于后端包，不导入后端模块。发布输出为 `server.tar.gz`、`agent.py`、`release.json`，不含配置、数据库、测试或部署工具。中心在归档解压根目录运行 `python3 -m monitor`，采集端执行独立 `agent.py`。集成方应使用[公开 CLI 和产物契约](docs/integration.md)，不导入应用内部模块。
 
-可选 Just 入口：`just demo`、`just configure`、`just run <配置>`、`just build`、`just test`、`just check`、`just browser-test`。Ruff 用于 Python 静态检查；uv 仅是可选开发工具，不是运行要求。
+可选 Just 入口：`just demo`、`just configure`、`just run <配置>`、`just build`、`just test`、`just check`、`just browser-test`。Python 命令默认使用应用的 uv 环境，可用 `PYTHON` 显式覆盖；Ruff 用于静态检查。当前中心归档和单文件 agent 仍可直接由 Python 运行，受管节点不因开发工具变化而需要 uv。
+
+## 架构资料
+
+- [当前架构](docs/architecture.md)：已经实现的业务、存储、HTTP 与生命周期边界。
+- [通信契约](docs/protocols.md)：浏览器 / agent API、内部调用、发布与部署的版本边界。
+- [目录与构建设计](docs/project-layout-plan.md)：frontend / backend / agents 的目标布局、uv 与现代工具、离线交付。
+- [重构进度](docs/architecture-plan.md)：已完成项与下一阶段门槛，不等同于线上部署状态。
 
 ## 使用与安全
 

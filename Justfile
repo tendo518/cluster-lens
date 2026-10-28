@@ -1,6 +1,6 @@
-# Standalone project commands: no parent repository, inventory, uv or Ansible needed.
+# Standalone application environment, owned by uv rather than the Ansible project.
 set working-directory := '.'
-python := env('PYTHON', 'python3')
+python := env('PYTHON', 'uv run --frozen python')
 
 [default]
 default:
@@ -22,7 +22,7 @@ test:
     {{python}} -S -m unittest discover -s tests -v
 
 browser-test:
-    node tests/browser-smoke.mjs
+    uv run --frozen node tests/browser-smoke.mjs
 
 check:
     node --check monitor/static/app.js

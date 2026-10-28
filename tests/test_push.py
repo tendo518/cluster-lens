@@ -14,11 +14,11 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from monitor import remote_probe
-from monitor.collector import Collector
+from _agent import remote_probe
 from monitor.models import Host
 from monitor.protocol import MAX_REPORT_BYTES
 from monitor.server import MonitorServer
+from monitor.service import MonitoringService
 from monitor.store import Store
 
 VIEWER = "viewer-token-for-test-only-12345678"
@@ -67,7 +67,7 @@ def report(host="alpha", ts=None):
     }
 
 
-class PushCollectorTests(unittest.TestCase):
+class PushServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.temp.name) / "push.sqlite3")
@@ -75,7 +75,7 @@ class PushCollectorTests(unittest.TestCase):
             Host("alpha", "10.1.2.3", groups=("gpu_servers",)),
             Host("beta", "10.1.2.4"),
         ]
-        self.collector = Collector(
+        self.collector = MonitoringService(
             self.hosts, self.store, credentials={"alpha": ALPHA, "beta": BETA}
         )
         self.collector.started_at = 100
@@ -128,7 +128,9 @@ class PushCollectorTests(unittest.TestCase):
     def test_restart_dedup_and_no_cached_online_claim(self):
         payload = report(ts=100)
         self.collector.accept_report(payload, now=100)
-        restarted = Collector(self.hosts, self.store, credentials={"alpha": ALPHA})
+        restarted = MonitoringService(
+            self.hosts, self.store, credentials={"alpha": ALPHA}
+        )
         self.assertEqual(restarted.overview()["hosts"][0]["status"], "pending")
         self.assertTrue(restarted.accept_report(payload, now=101)["duplicate"])
         self.assertIsNone(restarted.last_reports["alpha"])
@@ -200,7 +202,7 @@ class IngestionHTTPTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.temp.name) / "http.sqlite3")
-        self.collector = Collector(
+        self.collector = MonitoringService(
             [Host("alpha", "10.0.0.1"), Host("beta", "10.0.0.2")],
             self.store,
             credentials={"alpha": ALPHA, "beta": BETA},
@@ -244,7 +246,7 @@ class IngestionHTTPTests(unittest.TestCase):
         self.assertEqual(data["hosts"][0]["gpus"][0]["processes"][0]["user"], "labuser")
         self.assertNotIn(ALPHA, json.dumps(data))
         self.assertEqual(
-            self.store.history(time.time() - 60, time.time() + 1, names=["alpha"])[
+            self.collector.history(time.time() - 60, time.time() + 1, host="alpha")[
                 "aggregate"
             ]["avg_gpu"],
             50,

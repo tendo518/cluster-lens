@@ -11,10 +11,10 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from monitor.collector import Collector
 from monitor.config import parse_config
 from monitor.models import Host
 from monitor.server import MonitorServer
+from monitor.service import MonitoringService
 from monitor.store import Store
 from monitor.ui import DEFAULTS, icon_bytes, load_ui, parse_ui
 from project_tools.configure import generate
@@ -117,7 +117,7 @@ class UIConfigTests(unittest.TestCase):
 class UIHTTPTests(unittest.TestCase):
     def test_html_is_escaped_before_login_and_only_safe_icon_is_served(self):
         with tempfile.TemporaryDirectory() as temporary:
-            collector = Collector(
+            service = MonitoringService(
                 [Host("node-a", "192.0.2.1")],
                 Store(Path(temporary) / "history.sqlite3"),
             )
@@ -129,7 +129,7 @@ class UIHTTPTests(unittest.TestCase):
                 "icon": "data:image/png;base64," + base64.b64encode(png()).decode(),
             }
             server = MonitorServer(
-                ("127.0.0.1", 0), collector, "private-viewer-token", ui=ui
+                ("127.0.0.1", 0), service, "private-viewer-token", ui=ui
             )
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -164,11 +164,11 @@ class UIHTTPTests(unittest.TestCase):
 
     def test_missing_custom_icon_is_not_a_filesystem_endpoint(self):
         with tempfile.TemporaryDirectory() as temporary:
-            collector = Collector(
+            service = MonitoringService(
                 [Host("node-a", "192.0.2.1")],
                 Store(Path(temporary) / "history.sqlite3"),
             )
-            server = MonitorServer(("127.0.0.1", 0), collector)
+            server = MonitorServer(("127.0.0.1", 0), service)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:

@@ -3,8 +3,8 @@
 import math
 import time
 
-from .collector import classify
 from .models import Host
+from .service import classify
 
 SPECS = [
     ("demo-p100-01", "192.0.2.11", "Tesla P100-PCIE-16GB", 8, 16384),

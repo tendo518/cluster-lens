@@ -4,6 +4,8 @@
 
 ClusterLens 拥有运行包、页面、上报协议、配置校验、通用配置生成、发布工具和应用测试。部署方拥有主机发现、SSH、账户 / 权限、实际配置保管与分发、服务调度、安装卸载和数据迁移。
 
+组件间的通信、错误与版本边界见[通信契约](protocols.md)。后续中心 wheel 安装与三部分目录属于[目标设计](project-layout-plan.md)，本页仍描述当前 format=1 的可用入口。
+
 依赖方向只有“部署方调用应用的公开入口”。应用不读取部署仓库，不要求特定 inventory、中心主机、端口、账户、目录或服务管理器；部署方不应导入应用的内部 Python 模块。
 
 ## 控制端 CLI
@@ -29,8 +31,8 @@ python3 -B -S -m project_tools check-config /absolute/private-config/server.json
 
 | 产物 | 内容 |
 | --- | --- |
-| `server.tar.gz` | `monitor/` 下的运行 Python 与静态资源 |
-| `agent.py` | Python 3.6+ 独立采集 / 上报脚本 |
+| `server.tar.gz` | `monitor/` 下的中心运行 Python 与静态资源，不含 agent |
+| `agent.py` | 从 `agents/python/agent.py` 构建的 Python 3.6+ 独立采集 / 上报脚本 |
 | `release.json` | 格式版本、发行标识、两个产物的 SHA-256 |
 
 清单结构：

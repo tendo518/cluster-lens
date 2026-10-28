@@ -16,11 +16,11 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from monitor import remote_probe
-from monitor.collector import Collector, classify
+from _agent import remote_probe
 from monitor.demo import demo_hosts, demo_snapshot, seed_demo
 from monitor.models import Host
 from monitor.server import MonitorServer
+from monitor.service import MonitoringService, classify
 from monitor.store import Store
 
 
@@ -168,6 +168,14 @@ class StoreTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def history(self, start, end, names):
+        service = MonitoringService(
+            [Host(name, "192.0.2.1") for name in names],
+            self.store,
+            interval=self.store.interval,
+        )
+        return service.history(start, end)
+
     def test_gpu_averages_are_card_weighted(self):
         self.store.record_many(
             [
@@ -175,7 +183,7 @@ class StoreTests(unittest.TestCase):
                 snapshot("beta", 100, gpu_values=(0, 0, 0)),
             ]
         )
-        data = self.store.history(100, 130, names=["alpha", "beta"])
+        data = self.history(100, 130, names=["alpha", "beta"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 25)
         self.assertEqual(data["aggregate"]["peak_gpu"], 100)
         self.assertEqual(data["points"][0]["gpu"], 25)
@@ -190,7 +198,7 @@ class StoreTests(unittest.TestCase):
                 snapshot(ts=400, gpu_values=(40,)),
             ]
         )
-        data = self.store.history(100, 430, names=["alpha"])
+        data = self.history(100, 430, names=["alpha"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 60)
         self.assertAlmostEqual(data["aggregate"]["busy_gpu_hours"], 60 / 3600)
         self.assertAlmostEqual(data["aggregate"]["availability"], 100 * 2 / 3)
@@ -199,7 +207,7 @@ class StoreTests(unittest.TestCase):
         self.assertTrue(any(p["cpu"] is None for p in data["points"]))
 
     def test_no_data_and_missing_hosts(self):
-        data = self.store.history(100, 130, names=["alpha", "beta"])
+        data = self.history(100, 130, names=["alpha", "beta"])
         self.assertEqual(data["points"], [])
         self.assertIsNone(data["aggregate"]["avg_gpu"])
         self.assertIsNone(data["aggregate"]["availability"])
@@ -210,7 +218,7 @@ class StoreTests(unittest.TestCase):
         self.store.record_many(
             [snapshot(ts=100, gpu_values=(0,)), snapshot(ts=130, gpu_values=(None,))]
         )
-        data = self.store.history(100, 160, names=["alpha"])
+        data = self.history(100, 160, names=["alpha"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 0)
         self.assertEqual(data["points"][0]["gpu"], 0)
         self.assertIsNone(data["points"][1]["gpu"])
@@ -220,14 +228,14 @@ class StoreTests(unittest.TestCase):
         self.store.record_many(
             [snapshot("alpha", 100), snapshot("deleted", 100, gpu_values=(100,))]
         )
-        data = self.store.history(100, 130, names=["alpha"])
+        data = self.history(100, 130, names=["alpha"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 50)
         self.assertEqual(len(data["stats"]), 1)
 
     def test_interval_change_does_not_rewrite_historical_gpu_hours(self):
         self.store.record(snapshot(ts=100))
         self.store.interval = 300
-        data = self.store.history(100, 400, names=["alpha"])
+        data = self.history(100, 400, names=["alpha"])
         self.assertAlmostEqual(data["aggregate"]["busy_gpu_hours"], 30 / 3600)
 
     def test_latest_and_retention(self):
@@ -248,7 +256,7 @@ class StoreTests(unittest.TestCase):
             Store(path, mode="live")
 
     def test_collector_last_seen_is_preserved_but_metrics_are_not(self):
-        collector = Collector([Host("alpha", "127.0.0.1")], self.store)
+        collector = MonitoringService([Host("alpha", "127.0.0.1")], self.store)
         collector.accept(snapshot(ts=100))
         offline = snapshot(ts=130, status="offline", gpu_values=())
         offline["system"] = {}
@@ -281,7 +289,7 @@ class HTTPTests(unittest.TestCase):
             Host("alpha", "127.0.0.1"),
             Host("=SUM(1,1)", "localhost"),
         ]
-        cls.collector = Collector(hosts, store)
+        cls.collector = MonitoringService(hosts, store)
         cls.collector.accept(snapshot("alpha", time.time() - 10))
         cls.collector.accept(snapshot("=SUM(1,1)", time.time() - 10))
         cls.server = MonitorServer(
