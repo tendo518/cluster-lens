@@ -1,12 +1,8 @@
-"""Standalone config generation, release artifacts and application-owned agent tests."""
+"""Application-owned configuration/CLI: no inventory, SSH, runtime or real credentials."""
 
-import ast
-import hashlib
-import io
 import json
 import subprocess
 import sys
-import tarfile
 import tempfile
 import threading
 import unittest
@@ -17,20 +13,18 @@ from urllib.error import HTTPError
 
 from _agent import remote_probe
 from monitor.config import load_config
-from monitor.paths import ROOT
 from project_tools.configure import generate
-from project_tools.release import build, server_bundle
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class ProjectToolsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name) / "config"
         self.nodes = [{"name": "node-a", "address": "192.0.2.10", "groups": ["gpu"]}]
         self.url = "http://127.0.0.1:8080/api/agent/report"
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def test_configs_are_valid_private_and_stable_without_inventory(self):
         with patch("subprocess.run", side_effect=AssertionError("No external tools")):
@@ -116,157 +110,9 @@ class ProjectToolsTests(unittest.TestCase):
             generate(self.directory, self.nodes, self.url)
         self.assertEqual(path.read_bytes(), before)
 
-    def test_release_is_deterministic_self_contained_and_has_checksums(self):
-        output = Path(self.temp.name) / "dist"
-        with patch(
-            "subprocess.run", side_effect=AssertionError("No external build tool")
-        ):
-            manifest = build(output)
-        self.assertEqual((output / "server.tar.gz").read_bytes(), server_bundle())
-        for name, metadata in manifest["files"].items():
-            self.assertEqual(
-                metadata["sha256"],
-                hashlib.sha256((output / name).read_bytes()).hexdigest(),
-            )
-        ast.parse((output / "agent.py").read_text(), feature_version=(3, 6))
-        with tarfile.open(output / "server.tar.gz") as archive:
-            names = archive.getnames()
-            self.assertIn("monitor/static/app.js", names)
-            self.assertIn("monitor/__main__.py", names)
-            for member in archive.getmembers():
-                self.assertTrue(member.isfile())
-                self.assertEqual(member.mtime, 0)
-                self.assertTrue(member.name.startswith("monitor/"))
-                self.assertFalse(
-                    set(Path(member.name).parts)
-                    & {
-                        "project_tools",
-                        "tests",
-                        "docs",
-                        "config",
-                        "data",
-                        "__pycache__",
-                    }
-                )
-                if member.name.endswith(".py"):
-                    ast.parse(
-                        archive.extractfile(member).read().decode(),
-                        feature_version=(3, 9),
-                    )
-            self.assertNotIn("monitor/remote_probe.py", names)
-            self.assertEqual(
-                (ROOT / "agents/python/agent.py").read_bytes(),
-                (output / "agent.py").read_bytes(),
-            )
-
-    def test_release_does_not_follow_links_or_package_local_secrets(self):
-        project = Path(self.temp.name) / "project"
-        package = project / "monitor"
-        (package / "static").mkdir(parents=True)
-        (package / "__init__.py").write_text("")
-        (package / "static/index.html").write_text("<!doctype html>")
-        (package / "static/credentials.json").write_text("SECRET")
-        (package / "static/.env").write_text("SECRET")
-        with patch("project_tools.release.PROJECT", project):
-            with tarfile.open(fileobj=io.BytesIO(server_bundle())) as archive:
-                self.assertEqual(
-                    archive.getnames(),
-                    ["monitor/__init__.py", "monitor/static/index.html"],
-                )
-            (package / "static/linked.js").symlink_to(
-                package / "static/credentials.json"
-            )
-            with self.assertRaises(ValueError):
-                server_bundle()
-
-    def test_release_includes_nested_python_modules_and_runs_outside_source(self):
-        project = Path(self.temp.name) / "nested-project"
-        package = project / "monitor"
-        (package / "api").mkdir(parents=True)
-        (package / "__init__.py").write_text("")
-        (package / "__main__.py").write_text(
-            "from monitor.api.routes import VALUE; print(VALUE)\n"
-        )
-        (package / "api/__init__.py").write_text("")
-        (package / "api/routes.py").write_text("VALUE = 'nested runtime works'\n")
-        for name in ("tests", "docs", "data", "config", "__pycache__", ".private"):
-            directory = package / name
-            directory.mkdir()
-            (directory / "secret.py").write_text("DO_NOT_DISTRIBUTE = True\n")
-        isolated = Path(self.temp.name) / "isolated-runtime"
-        isolated.mkdir()
-        with patch("project_tools.release.PROJECT", project):
-            bundle = server_bundle()
-            self.assertEqual(bundle, server_bundle())
-        with tarfile.open(fileobj=io.BytesIO(bundle)) as archive:
-            self.assertEqual(
-                archive.getnames(),
-                [
-                    "monitor/__init__.py",
-                    "monitor/__main__.py",
-                    "monitor/api/__init__.py",
-                    "monitor/api/routes.py",
-                ],
-            )
-            archive.extractall(isolated, filter="data")
+    def test_describe_requires_prepared_environment_and_declares_v2(self):
         result = subprocess.run(
-            [sys.executable, "-B", "-S", "-m", "monitor"],
-            cwd=isolated,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "nested runtime works")
-
-    def test_release_rejects_linked_runtime_directories(self):
-        project = Path(self.temp.name) / "linked-package"
-        package = project / "monitor"
-        package.mkdir(parents=True)
-        outside = Path(self.temp.name) / "outside"
-        outside.mkdir()
-        (outside / "secret.py").write_text("SECRET = True\n")
-        (outside / "secret.js").write_text("const secret = true;\n")
-        for name in ("api", "static"):
-            link = package / name
-            link.symlink_to(outside, target_is_directory=True)
-            with (
-                patch("project_tools.release.PROJECT", project),
-                self.assertRaisesRegex(ValueError, "符号链接"),
-            ):
-                server_bundle()
-            link.unlink()
-
-    def test_agent_release_does_not_follow_symlinks(self):
-        project = Path(self.temp.name) / "linked-project"
-        agent_dir = project / "agents/python"
-        agent_dir.mkdir(parents=True)
-        target = project / "secret.txt"
-        target.write_text("not an agent")
-        (agent_dir / "agent.py").symlink_to(target)
-        with (
-            patch("project_tools.release.PROJECT", project),
-            self.assertRaises(ValueError),
-        ):
-            build(Path(self.temp.name) / "bad-release")
-        self.assertFalse((Path(self.temp.name) / "bad-release").exists())
-
-    def test_release_missing_runtime_fails_before_publishing_any_artifact(self):
-        project = Path(self.temp.name) / "missing-runtime"
-        agent = project / "agents/python/agent.py"
-        agent.parent.mkdir(parents=True)
-        agent.write_text("pass\n")
-        output = Path(self.temp.name) / "not-published"
-        with (
-            patch("project_tools.release.PROJECT", project),
-            self.assertRaisesRegex(ValueError, "运行入口"),
-        ):
-            build(output)
-        self.assertFalse(output.exists())
-
-    def test_describe_contract_matches_release_configuration_version(self):
-        result = subprocess.run(
-            [sys.executable, "-B", "-S", "-m", "project_tools", "describe"],
+            [sys.executable, "-B", "-m", "project_tools", "describe"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -276,14 +122,14 @@ class ProjectToolsTests(unittest.TestCase):
         self.assertEqual(
             json.loads(result.stdout),
             {
-                "contract_version": 1,
+                "contract_version": 2,
                 "application": "hqlab-monitor",
                 "config_version": 1,
+                "report_version": 1,
+                "release_formats": [2],
+                "agents": ["python"],
+                "prepared_environment_required": True,
             },
-        )
-        self.assertEqual(
-            json.loads(result.stdout)["config_version"],
-            build(Path(self.temp.name) / "release")["config_version"],
         )
         self.assertFalse(self.directory.exists())
 
@@ -292,7 +138,6 @@ class ProjectToolsTests(unittest.TestCase):
         nodes.write_text(json.dumps(self.nodes))
         command = [
             sys.executable,
-            "-S",
             "-m",
             "project_tools",
             "configure",
@@ -317,9 +162,8 @@ class ProjectToolsTests(unittest.TestCase):
         )
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertEqual((self.directory / "server.json").read_bytes(), before)
-        config = json.loads(before)
         self.assertNotIn(
-            config["viewer_token"],
+            json.loads(before)["viewer_token"],
             first.stdout + first.stderr + second.stdout + second.stderr,
         )
 
@@ -343,28 +187,29 @@ class ProjectToolsTests(unittest.TestCase):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
-        try:
-            generate(
-                self.directory,
-                self.nodes,
-                f"http://127.0.0.1:{server.server_port}/api/agent/report",
-            )
-            config = remote_probe.load_agent_config(
-                str(self.directory / "agents/node-a.json")
-            )
-            with self.assertRaises(HTTPError) as error:
-                remote_probe.send_report(config, {"version": 1, "host": "node-a"})
-            self.assertEqual(error.exception.code, 302)
-            self.assertEqual(followed, [])
-            config["token"] = "bad\nsecret"
-            path = self.directory / "invalid.json"
-            path.write_text(json.dumps(config))
-            with self.assertRaises(ValueError):
-                remote_probe.load_agent_config(str(path))
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
+        self.addCleanup(server.server_close)
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(server.shutdown)
+        url = f"http://127.0.0.1:{server.server_port}/api/agent/report"
+        generate(self.directory, self.nodes, url)
+        path = self.directory / "agents/node-a.json"
+        config = remote_probe.load_agent_config(path)
+        with self.assertRaises(HTTPError) as error:
+            remote_probe.send_report(config, {"version": 1})
+        self.assertEqual(error.exception.code, 302)
+        error.exception.close()
+        self.assertEqual(followed, [])
+        for changes in (
+            {"version": 2},
+            {"token": "short"},
+            {"interval": True},
+            {"timeout": 31},
+            {"url": url + "?token=secret"},
+            {"url": "https://user:secret@example.org/api/agent/report"},
+        ):
+            path.write_text(json.dumps({**config, **changes}))
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                remote_probe.load_agent_config(path)
 
 
 if __name__ == "__main__":

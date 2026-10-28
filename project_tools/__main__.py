@@ -7,6 +7,7 @@ from pathlib import Path
 from monitor.config import CONFIG_VERSION, load_config
 from monitor.ui import load_ui
 
+from .assets import assemble
 from .configure import generate
 from .release import build
 
@@ -26,8 +27,24 @@ def main():
     config.add_argument(
         "--ui", type=Path, help="UI JSON；省略时保留已有设置，空对象恢复应用默认"
     )
-    release = commands.add_parser("build", help="生成无凭据的运行发布包与单文件 agent")
+    release = commands.add_parser(
+        "build", help="离线装配 format=2 发布；不下载依赖或运行 npm install"
+    )
     release.add_argument("--output", type=Path, default=Path("dist"))
+    release.add_argument("--wheelhouse", type=Path, help="已准备的 uv 锁定 wheel 缓存")
+    release.add_argument("--frontend", type=Path, help="已构建的公开前端资源目录")
+    wheels = commands.add_parser(
+        "prepare-wheels", help="显式从 uv.lock 中的官方 HTTPS 地址获取目标 wheel"
+    )
+    wheels.add_argument("--output", type=Path, default=Path(".build/wheels"))
+    assets = commands.add_parser(
+        "assets", help="装配已构建的前端到可安装运行包，不运行 Node"
+    )
+    assets.add_argument("--frontend", type=Path)
+    schemas = commands.add_parser(
+        "schemas", help="从应用模型导出公开 JSON Schema，不读取配置"
+    )
+    schemas.add_argument("--output", type=Path, default=Path("contracts"))
     check = commands.add_parser(
         "check-config", help="校验中心配置，不监听、不采集、不写数据库"
     )
@@ -39,15 +56,39 @@ def main():
             print(
                 json.dumps(
                     {
-                        "contract_version": 1,
+                        "contract_version": 2,
                         "application": "hqlab-monitor",
                         "config_version": CONFIG_VERSION,
+                        "report_version": 1,
+                        "release_formats": [2],
+                        "agents": ["python"],
+                        "prepared_environment_required": True,
                     }
                 )
             )
         elif args.command == "build":
-            build(args.output)
-            print("发布产物已生成：server.tar.gz、agent.py、release.json")
+            build(args.output, wheelhouse=args.wheelhouse, frontend=args.frontend)
+            print("发布产物已生成：server.tar.gz、agent.py、release.json（format=2）")
+        elif args.command == "prepare-wheels":
+            from .wheels import prepare
+
+            print(json.dumps(prepare(args.output), ensure_ascii=False))
+        elif args.command == "assets":
+            assemble(args.frontend)
+            print("公开前端资源已装配；未读取运行配置")
+        elif args.command == "schemas":
+            from monitor.schemas import export_schemas
+
+            from .files import private_write
+
+            args.output.mkdir(parents=True, exist_ok=True)
+            for name, schema in export_schemas().items():
+                private_write(
+                    args.output / (name + ".schema.json"),
+                    json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True)
+                    + "\n",
+                )
+            print("公开模型 Schema 已导出；不包含凭据或运行状态")
         elif args.command == "check-config":
             load_config(args.path)
             print("中心配置有效")

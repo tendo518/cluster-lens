@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "host": "fixture-node",
+  "url": "https://monitor.example.org/api/agent/report",
+  "token": "fixture-agent-token-not-a-secret",
+  "interval": 30,
+  "timeout": 8
+}

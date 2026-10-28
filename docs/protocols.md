@@ -1,6 +1,6 @@
 # 模块通信与集成契约
 
-本文区分**当前已实现的协议**与**后续目录 / 依赖重构的约束**。当前 HTTP、agent 配置与报告、发布清单均保持兼容；本文中的后续项不表示已提供 Node agent、FastAPI 或新版发布格式。
+本文描述当前 FastAPI / Uvicorn 中心、模块化前端和独立 Python agent 的通信边界。配置与报告保持 version=1；依赖安装语义使用新版 release format=2，控制端仍显式识别旧 v1。Node agent 不在当前实现范围。
 
 ## 1. 通信总览
 
@@ -23,6 +23,7 @@
 - viewer 令牌不能上报数据，agent 令牌不能读取监控数据。
 - `GET /healthz` 仅返回 `{"status":"ok"}`，不证明所有节点在线。
 - `GET /api/overview` 返回 hosts、mode、demo、interval、stale_after、retention_days、collecting、last_cycle、server_time。
+- `GET /api/runtime` 供安装器确认 application、version、pid、release_id；始终要求 viewer 身份，即使 demo 的其他读取允许无令牌。没有文件路径、凭据或数据库内容。
 - `GET /api/history` 返回 start、end、bucket_seconds、points、stats、aggregate、busy_threshold、sample_interval。
 - `GET /api/export.csv` 使用同样的查询与统计，UTF-8 BOM、固定列顺序和文件名 `clusterlens-usage.csv`；缺失值为空，危险的表格公式前缀转义。
 
@@ -30,7 +31,7 @@
 
 HEAD 对相同资源返回 GET 的状态和头部，但不发送响应体。当前响应包含 `Cache-Control: no-store`、nosniff、no-referrer、CSP 与禁止嵌入头。JSON 错误统一为 `{"error":"说明"}`：viewer 鉴权失败为 401，参数无效为 400，接口 / 页面不存在为 404，内部错误为 500。`/api/` 下的 GET 先检查 viewer 鉴权，再判断接口是否存在。
 
-浏览器 UI 行为见[使用指南](user-guide.md)。后续现代前端仍通过这些 API 通信，不直接读取 SQLite、server.json 或后端源码。
+浏览器 UI 行为见[使用指南](user-guide.md)。TypeScript 前端只通过这些 API 通信，不直接读取 SQLite、server.json 或后端源码。普通轮询不保存令牌；`hqlab-monitor-auth-revision` 是无秘密的变更标记，不是服务器会话标识。
 
 ## 3. agent 配置与报告（当前 version=1）
 
@@ -50,7 +51,7 @@ Python agent 本机采集后发送一次，退出状态表示本次采集 / 上�
 - body 是 version=1 对象，至少包含 host、report_id、collected_at、interval；成功采集含非空 system 与 gpus 数组。collection_ms、warnings、error 按协议处理。version 必须是 JSON 整数 1，不把 true、1.0 或字符串 "1" 转换成版本号；中心和 agent 配置使用同样的严格版本规则。
 - report_id 为 UUID 字符串，agent 每次新采样生成新 ID；重试同一报告应保留 ID，不能用旧数据构造新时间冒充新采样。
 - collected_at 为采样端 Unix 时间，与中心接收时间之差不超过 `max(60, 2 × interval)` 秒。interval 必须与中心配置一致。
-- 指标允许未知值 null，但拒绝 NaN、Infinity、越界数字、重复 GPU index、无效 PID 或超过限制的数组 / 字符串。完整规范化规则当前位于 `monitor/protocol.py`，通过协议测试固定。
+- 指标允许未知值 null，但拒绝 NaN、Infinity、越界数字、重复 GPU index、无效 PID 或超过限制的数组 / 字符串。完整规范化规则由 `backend/src/monitor/schemas/report.py` 与业务服务共同定义，`contracts/agent-report.schema.json` 从同一模型导出；协议测试固定时序与归属语义。
 - error 为非空错误说明时视为采集失败，中心清空当前指标并标记 offline，不伪造 0。
 
 中心依据认证后的 host 绑定名称、地址和分组，不接受报告覆盖配置身份或自行宣称 online。历史时间使用中心接收时间，采样时间单独保存。
@@ -67,21 +68,23 @@ Python agent 本机采集后发送一次，退出状态表示本次采集 / 上�
 
 | 状态码 | 含义 |
 | --- | --- |
-| 400 | 分块请求、无效 JSON、正文不完整或报告校验 / 顺序错误 |
+| 400 | 不支持的分块上报、无效 JSON 或报告校验 / 顺序错误；另含 HTTP parser 拒绝 |
 | 401 | 节点未知、身份与令牌不匹配 |
 | 403 | 演示模式拒绝真实上报 |
 | 405 | 非上报端点的 POST |
 | 408 | 读取正文超时 |
-| 411 | 缺少有效 Content-Length |
+| 411 | 应用收到的缺少或为零的 Content-Length |
 | 413 | 报告超过 1 MiB |
 | 415 | 不支持的内容类型或压缩编码 |
 | 500 | 保存失败，不能当作成功上报 |
 
-错误优先级也是基线的一部分：路由 → 演示策略 → 请求分帧 / 编码 → JSON 解析 → 节点鉴权 → 业务校验 / 写入。agent 不需要知道中心使用什么 Web 框架或 ORM。
+合法 HTTP 消息进入应用后的优先级仍为：路由 → 演示策略 → 请求分帧 / 编码 → JSON 解析 → 节点鉴权 → 业务校验 / 写入。agent 不需要知道中心使用什么 Web 框架或 ORM。
 
-### 多语言 agent 的后续要求
+**明确的 wire-parser 差异**：h11 在应用前拒绝非法 Content-Length（空字符串、负数、+1、小数、非数字）和不支持的 Transfer-Encoding: identity，返回 parser 自己的纯文本 400，而非旧 Handler 的 JSON 411 / 400；TCP 半关闭导致正文截断时直接断开，不写历史；HTTP 头末尾的 OWS 会按标准去除，因此合法 Bearer 后的空格 / tab 不再导致 401，scheme 和内部空格仍严格。这些情况有真实 socket 回归，不通过自写 HTTP parser 恢复旧解析缺陷。应用层 JSON / 安全头保证不包含 parser 拒绝的畸形报文。
 
-Python 与可选 Node 实现必须共用同一份配置 / 报告协议和一致性测试。schema 可从后端模型导出供构建和测试使用，但 agent 运行时不因此引入 schema 库或后端包。时间窗口、身份、去重、NULL、单位和累计计数差分等语义仍需测试，不能仅靠 JSON Schema 保证。
+### agent 一致性与选择
+
+`contracts/report-v1.json`、`contracts/agent-config-v1.json` 与独立 / 跨组件测试固定当前 agent 边界；未来若另行增加 Node，应共用这些协议和测试。schema 已由后端模型导出供构建和测试使用，但 agent 运行时不引入 schema 库或后端包。时间窗口、身份、去重、NULL、单位和累计计数差分等语义仍需测试，不能仅靠 JSON Schema 保证。
 
 Node 版尚未实现；不能仅改解释器名称就把 Python agent 当成 Node agent，也不能假定所有节点已安装 Node。
 
@@ -99,7 +102,7 @@ Node 版尚未实现；不能仅改解释器名称就把 Python agent 当成 Nod
 
 当前公开 CLI 与发布清单详见[集成契约](integration.md)：配置工具生成私密 JSON，构建工具生成 server.tar.gz、agent.py、release.json。release.format_version、运行配置 version、报告 version 是不同的兼容维度，不能混用。
 
-后续物理目录分离与中心依赖交付遵循以下约束：
+当前目录分离与中心依赖交付遵循以下约束：
 
 1. 构建工具拥有源码布局、前端构建和资源装配知识；Ansible 只消费清单和公开产物。
 2. 配置工具继续由应用拥有，schema 不在部署工程重复实现；同一节点重新生成配置不轮换令牌。

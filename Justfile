@@ -1,39 +1,61 @@
-# Standalone application environment, owned by uv rather than the Ansible project.
+# Development/build dependencies are application-owned, never installed on agents.
 set working-directory := '.'
-python := env('PYTHON', 'uv run --frozen python')
+# Prepared interpreter only: no implicit uv sync/download during build/configure.
+python := env('PYTHON', '.venv/bin/python')
 
 [default]
 default:
     @just --list
 
-run config db="data/monitor.sqlite3":
+# Explicit development dependency acquisition. No remote hosts or runtime config.
+setup:
+    uv sync --frozen --group build
+    npm --prefix frontend ci
+
+# Explicit, hash-verified PyPI acquisition for the declared offline center target.
+prepare-wheels output=".build/wheels":
+    {{python}} -m project_tools prepare-wheels --output '{{output}}'
+
+frontend-build:
+    npm --prefix frontend run build
+
+assets: frontend-build
+    {{python}} -m project_tools assets
+
+run config db="data/monitor.sqlite3": assets
     {{python}} -m monitor --config '{{config}}' --db '{{db}}'
 
-demo db="data/monitor-demo.sqlite3":
+demo db="data/monitor-demo.sqlite3": assets
     {{python}} -m monitor --demo --db '{{db}}'
 
 configure nodes="examples/nodes.json" url="http://127.0.0.1:8080/api/agent/report" output="config/local":
     {{python}} -m project_tools configure --nodes '{{nodes}}' --url '{{url}}' --output '{{output}}'
 
-build output="dist":
+# Offline assembly; prepare-wheels is intentionally NOT an implicit prerequisite.
+build output="dist": frontend-build
     {{python}} -m project_tools build --output '{{output}}'
 
-test:
-    {{python}} -S -m unittest discover -s tests -v
-    node --test tests/frontend-auth.mjs
+schemas:
+    {{python}} -m project_tools schemas
+
+test: assets
+    {{python}} -m unittest discover -s backend/tests -v
+    {{python}} -m unittest discover -s agents/tests -v
+    {{python}} -m unittest discover -s tests -v
+    npm --prefix frontend test
 
 frontend-test:
-    node --test tests/frontend-auth.mjs
+    npm --prefix frontend test
 
-browser-test:
-    uv run --frozen node tests/browser-smoke.mjs
+browser-test: assets
+    npm --prefix frontend run test:browser
+    npm --prefix frontend run test:detail
 
 check:
-    node --check monitor/static/app.js
-    node --check monitor/static/appearance.js
-    node --check tests/browser-smoke.mjs
-    node --check tests/workspace-navigation.mjs
-    node --check tests/branding.mjs
-    node --check tests/authentication.mjs
-    node --check tests/frontend-auth.mjs
-    node --check tests/frontend-detail.mjs
+    npm --prefix frontend run typecheck
+    npm --prefix frontend run format:check
+    node --check frontend/tests/browser-smoke.mjs
+    node --check frontend/tests/workspace-navigation.mjs
+    node --check frontend/tests/branding.mjs
+    node --check frontend/tests/authentication.mjs
+    node --check frontend/tests/frontend-detail.mjs

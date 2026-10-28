@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "host": "fixture-node",
+  "report_id": "00000000-0000-0000-0000-000000000001",
+  "collected_at": 4000000,
+  "interval": 30,
+  "collection_ms": 50,
+  "error": null,
+  "warnings": [],
+  "system": {
+    "hostname": "fixture-node",
+    "cpu_percent": 25,
+    "memory_percent": null,
+    "load": [1, 2, 3]
+  },
+  "gpus": [
+    {
+      "index": 0,
+      "name": "Fixture GPU",
+      "utilization": null,
+      "memory_used_mb": 128,
+      "memory_total_mb": 1024,
+      "processes": [
+        {"pid": 42, "name": "fixture-process", "user": "fixture-user", "memory_mb": 128}
+      ]
+    }
+  ]
+}

@@ -2,6 +2,8 @@
 
 ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不搜索父目录，也不推断部署账户或数据库位置。除 CLI 特别说明外，路径相对于当前工作目录；跨工程调用建议使用绝对路径。
 
+以下工具命令在应用根目录使用已准备的 `.venv`（见 [README](../README.md)）；不会自动安装依赖。中心是 CPython 3.13，独立 agent 仍只要求 Python 3.6。
+
 ## 1. 生成配置
 
 公开节点清单为非空 JSON 数组：
@@ -16,7 +18,7 @@ ClusterLens 只读取显式的 JSON 与启动参数，不发现 inventory、不�
 地址是展示信息，不是 SSH 采集目标。每项仅接受 `name`、`address`、`groups`；名称使用 1—128 个字母、数字、点、横线或下划线，不能为 `.` / `..`，必须唯一。地址长度为 1—255；groups 是字符串数组，可省略。
 
 ```bash
-python3 -m project_tools configure --nodes examples/nodes.json \
+.venv/bin/python -m project_tools configure --nodes examples/nodes.json \
   --url https://monitor.example.org/api/agent/report \
   --ui examples/ui.json --output config/local \
   --interval 30 --stale-after 100 --retention-days 30
@@ -55,10 +57,13 @@ python3 -m project_tools configure --nodes examples/nodes.json \
 所有 agent 令牌必须彼此不同，并与 viewer 令牌不同。
 
 ```bash
-python3 -m project_tools check-config /path/to/server.json
-python3 -m monitor --config /path/to/server.json \
+.venv/bin/python -m project_tools check-config /path/to/server.json
+.venv/bin/python -I -m monitor --check-config /path/to/server.json
+.venv/bin/python -I -m monitor --config /path/to/server.json \
   --host 127.0.0.1 --port 8080 --db /path/to/history.sqlite3
 ```
+
+`--check-config` 校验并返回简短 JSON，不创建 Store / DB、不监听端口。未显式传 `--db` 时，状态放在 `$XDG_STATE_HOME/clusterlens` 或 `~/.local/state/clusterlens`，demo / live 使用不同文件；不写入 site-packages。`--assets DIRECTORY` 仅显式覆盖静态资源，默认使用 wheel 包资源。
 
 监听地址、端口和数据库路径属于启动参数，不是 server.json 字段。默认只监听本机；非本机监听必须有有效访问令牌。环境变量 `CLUSTERLENS_VIEWER_TOKEN` 可覆盖 viewer 令牌，服务部署应避免意外继承它。演示和真实模式禁止共用数据库；应用不自动迁移、合并或清理其他数据库。
 
@@ -104,7 +109,7 @@ UI 文件是单独的 JSON 对象；也可以直接将同样的运行字段写�
 ### 运行时与浏览器优先级
 
 ```bash
-python3 -m monitor --demo --ui examples/ui.json
+.venv/bin/python -I -m monitor --demo --ui examples/ui.json
 ```
 
 运行参数 `--ui` → 中心配置 `ui` → 应用默认值。`--ui` 对整份 UI 使用替换语义，不与 server.json.ui 逐字段合并。站点文字、默认主题和配色在 HTML 首次响应中生效，无需等待鉴权或额外配置请求。
@@ -131,6 +136,7 @@ URL 必须是 HTTP(S) 完整 `/api/agent/report` 端点，不含用户名、密�
 | `GET /api/overview` | viewer Bearer，实时状态 |
 | `GET /api/history` | viewer Bearer，历史 / 统计 |
 | `GET /api/export.csv` | viewer Bearer，导出统计 |
+| `GET /api/runtime` | 始终需要 viewer Bearer，发行版本 / 摘要与进程身份 |
 | `GET /healthz` | 无鉴权，仅最小存活信息 |
 | 页面、静态资源、站点图标 | 无鉴权，不包含真实指标或令牌 |
 

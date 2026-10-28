@@ -1,0 +1,4 @@
+/node_modules/
+/dist/
+/build-receipt.json
+/build-receipt.json.tmp

@@ -1,0 +1,116 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "avatar": {
+      "default": "CL",
+      "maxLength": 3,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Avatar",
+      "type": "string",
+      "x-error": "ui.avatar 应为不含控制字符且长度不超过 3 的文本"
+    },
+    "footer": {
+      "default": "ClusterLens",
+      "maxLength": 120,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Footer",
+      "type": "string",
+      "x-error": "ui.footer 应为不含控制字符且长度不超过 120 的文本"
+    },
+    "heading": {
+      "default": "集群运行监控",
+      "maxLength": 80,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Heading",
+      "type": "string",
+      "x-error": "ui.heading 应为不含控制字符且长度不超过 80 的文本"
+    },
+    "icon": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Icon"
+    },
+    "mark": {
+      "default": "C",
+      "maxLength": 2,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Mark",
+      "type": "string",
+      "x-error": "ui.mark 应为不含控制字符且长度不超过 2 的文本"
+    },
+    "name": {
+      "default": "ClusterLens",
+      "maxLength": 40,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Name",
+      "type": "string",
+      "x-error": "ui.name 应为不含控制字符且长度不超过 40 的文本"
+    },
+    "palette": {
+      "default": "green",
+      "enum": [
+        "green",
+        "blue",
+        "purple",
+        "amber",
+        "teal",
+        "rose"
+      ],
+      "title": "Palette",
+      "type": "string",
+      "x-error": "ui.theme 或 ui.palette 无效"
+    },
+    "subtitle": {
+      "default": "SERVER MONITORING",
+      "maxLength": 60,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Subtitle",
+      "type": "string",
+      "x-error": "ui.subtitle 应为不含控制字符且长度不超过 60 的文本"
+    },
+    "theme": {
+      "default": "system",
+      "enum": [
+        "system",
+        "light",
+        "dark"
+      ],
+      "title": "Theme",
+      "type": "string",
+      "x-error": "ui.theme 或 ui.palette 无效"
+    },
+    "title": {
+      "default": "ClusterLens · 服务器监控",
+      "maxLength": 120,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Title",
+      "type": "string",
+      "x-error": "ui.title 应为不含控制字符且长度不超过 120 的文本"
+    },
+    "workspace": {
+      "default": "服务器集群",
+      "maxLength": 60,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Workspace",
+      "type": "string",
+      "x-error": "ui.workspace 应为不含控制字符且长度不超过 60 的文本"
+    },
+    "workspace_subtitle": {
+      "default": "Monitoring workspace",
+      "maxLength": 80,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "title": "Workspace Subtitle",
+      "type": "string",
+      "x-error": "ui.workspace_subtitle 应为不含控制字符且长度不超过 80 的文本"
+    }
+  },
+  "title": "UIConfig",
+  "type": "object"
+}

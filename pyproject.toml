@@ -1,11 +1,29 @@
 [project]
 name = "cluster-lens"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read-only push-based server and GPU monitoring, independent of deployment tooling"
 readme = "README.md"
-requires-python = ">=3.9"
-dependencies = []
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+    "pydantic>=2.11,<3",
+]
 
-# Source/release-archive execution: no package installer or build backend is required.
-[tool.uv]
-package = false
+[dependency-groups]
+build = ["hatchling>=1.27,<2", "pip>=25,<27", "packaging>=25,<27"]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/src/monitor"]
+exclude = ["**/__pycache__", "**/*.pyc"]
+
+[tool.hatch.build.targets.sdist]
+include = ["backend/src/monitor", "frontend", "project_tools", "agents", "contracts", "README.md", "pyproject.toml", "uv.lock", "hatch_build.py"]
+exclude = ["frontend/node_modules", "frontend/dist", "**/__pycache__"]

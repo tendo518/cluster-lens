@@ -1,4 +1,4 @@
-"""Run only extracted release files and exercise the unchanged agent wire protocol."""
+"""Run the offline-installed wheel outside source and exercise unchanged agent v1."""
 
 import json
 import os
@@ -7,7 +7,6 @@ import re
 import sqlite3
 import subprocess
 import sys
-import tarfile
 import tempfile
 import threading
 import unittest
@@ -16,8 +15,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from _release_fixture import install_runtime, shared_release
 from project_tools.configure import generate
-from project_tools.release import build
 
 
 class ReleaseRuntimeTests(unittest.TestCase):
@@ -25,14 +24,13 @@ class ReleaseRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             release, runtime, private = (
-                root / "release",
+                shared_release(),
                 root / "runtime",
                 root / "private",
             )
-            build(release)
-            runtime.mkdir()
-            with tarfile.open(release / "server.tar.gz") as archive:
-                archive.extractall(runtime, filter="data")
+            python = install_runtime(runtime, release)
+            # A leftover legacy source package must not shadow the installed wheel.
+            (runtime / "monitor.py").write_text("raise RuntimeError('source shadow')\n")
             configuration = generate(
                 private,
                 [{"name": "node-a", "address": "192.0.2.1", "groups": []}],
@@ -46,9 +44,9 @@ class ReleaseRuntimeTests(unittest.TestCase):
             database = root / "history.sqlite3"
             center = subprocess.Popen(
                 [
-                    sys.executable,
+                    str(python),
                     "-B",
-                    "-S",
+                    "-I",
                     "-m",
                     "monitor",
                     "--config",

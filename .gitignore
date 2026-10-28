@@ -3,7 +3,12 @@ __pycache__/
 .venv/
 .ruff_cache/
 /build/
+/.build/
 /dist/
+/backend/src/monitor/static/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build-receipt.json
 /*.egg-info/
 /data/
 /config/

@@ -1,0 +1,22 @@
+{
+  "name": "@clusterlens/monitor-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24"},
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/unit/*.test.mjs",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "test:detail": "node tests/frontend-detail.mjs",
+    "format": "prettier --write 'src/**/*.ts' '*.ts' 'scripts/*.mjs' 'tests/unit/*.mjs'",
+    "format:check": "prettier --check 'src/**/*.ts' '*.ts' 'scripts/*.mjs' 'tests/unit/*.mjs'"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1"
+  }
+}

@@ -1,106 +1,54 @@
-# 前端、后端与 host agent 的目录 / 构建设计
+# 三组件目录与构建：实施结果
 
-> 状态：目标设计，分步实施。已完成业务分层、审查修复、uv 开发环境、显式工具 / 预构建 v1 接口和 `agents/python/agent.py` 的源码独立；前端 / 后端物理目录搬迁、现代 Web 框架和新版中心安装格式尚未实施。当前可运行结构见[架构说明](architecture.md)。
-
-## 1. 三个产品边界
-
-| 部分 | 目标 | 运行依赖 |
-| --- | --- | --- |
-| frontend | 独立源码、构建和测试；TypeScript + Vite，按 API / 状态 / 视图组织 | 浏览器只下载最终资源；Node 用于开发 / 构建 |
-| backend | 可安装的 Python 包；FastAPI / Uvicorn / Pydantic，业务、存储和 HTTP 分层 | 由 uv 锁定管理；允许现代 Python 与第三方库 |
-| agents | 与后端代码分离，按实现语言组织 | Python 单文件标准库先行；Node 版按需实现，优先内置 API |
-
-前端使用现代工具不等于必须先重写全部界面；先让构建与模块边界成立，再迁移 TypeScript。React / Vue 不作为本轮强制依赖。SQLite 保留，不为目录重构引入数据库改型或外部队列。
-
-## 2. 目标文件树
+本轮目录 / 运行时迁移已实现，不再是占位目标。当前模块关系见[架构说明](architecture.md)，公开交付规则见[集成契约](integration.md)。实现和本地验证不代表生产部署。
 
 ```text
-pyproject.toml                 # Python 项目元数据、后端包、运行 / 开发依赖分组
-uv.lock                        # Python 依赖唯一锁定来源
-.python-version                # 开发解释器版本
-Justfile                       # 开发、测试、配置、构建入口
-backend/
-  src/monitor/                 # 保留 python -m monitor 入口
-    api/                       # HTTP 路由 / 鉴权 / 响应适配
-    services/                  # 报告、状态、查询用例
-    storage/                   # SQLite、事务及未来显式迁移
-    schemas/                   # 应用配置、报告、API 模型
-    ...                        # 生命周期、UI 等模块按职责归入，不机械拆类
-  tests/
-frontend/
-  package.json                 # 前端构建 / 测试依赖
-  package-lock.json            # 前端锁定文件
-  src/                         # API client、状态、视图、图表、样式
-  public/                      # 无秘密的公开固定资源
-  dist/                        # 构建输出，忽略并打入中心发行包
-agents/
-  README.md
-  python/agent.py              # 已独立；保持 Python 3.6+ 与标准库
-  node/agent.mjs               # 可选，尚未实现，不创建占位产物
-  tests/                      # 采集器测试与多语言一致性测试
-project_tools/                 # 应用拥有的 configure / check-config / build CLI
-contracts/                    # 构建导出的 schema / OpenAPI、版本说明和协议样例
-tests/                        # 跨组件 / 发布集成测试
-docs/                         # 架构、协议、配置和集成说明
+pyproject.toml / uv.lock       # 应用独立 Python 环境和锁
+backend/src/monitor/          # 可安装中心包；保留 python -m monitor
+  api/                        # FastAPI 路由、依赖鉴权、异常适配
+  schemas/                    # Pydantic 配置 / 报告 / UI 模型
+  service.py / lifecycle.py   # 业务、单进程生命周期与后台调度
+  store.py / history.py / exports.py
+  static/                     # receipt 校验后装配，生成物不入库
+backend/tests/
+frontend/                     # 独立 npm lock、strict TypeScript、Vite
+  src/                        # API / auth / state / selectors / views / navigation
+  public/ / scripts/ / tests/
+  dist/                       # 构建输出，不入库
+agents/python/agent.py        # 3.6+、标准库、单文件
+agents/tests/
+contracts/                    # 共享 JSON fixtures 与导出 schema
+project_tools/                # configure / check-config / describe / assets / build
+                              # prepare-wheels / schemas
+hatch_build.py                # wheel 静态资源装配门禁
+tests/                        # 跨组件与已安装发行包验收
 ```
 
-初期只需要一个根 Python 项目及 uv 锁文件，不为三个产品边界创建三个互相依赖的 Python 包。前端使用自身的 npm 锁文件；agent 在节点不要求 uv / npm 安装。后端不导入 project_tools 或 agent，project_tools 可以复用应用的配置模型，但不能让部署方依赖这些内部模块。
+只有一个应用 Python 项目；没有为目录分组制造互相依赖的内部发行包。前端无框架重写，视图和状态按职责模块化。业务模块不导入 HTTP 框架；数据库仍是 SQLite，未引入 ORM、队列或新存储。
 
-后端 wheel 包含 `monitor` 和装配后的静态资源，不包含 agent、测试、工具、源码工作区或凭据。运行期按包资源定位静态文件，不搜索源码树中的 frontend；开发所需的资源目录通过构建入口或显式参数提供，不隐式寻找父仓库。数据库等可变状态不得默认写入 site-packages，部署时继续显式指定原有 `--db`。
+## 已落实的设计选择
 
-## 3. uv 与 Python 版本
+| 事项 | 结果 |
+| --- | --- |
+| 中心版本 / 平台 | CPython 3.13、Linux x86_64 / glibc ≥2.17，非自由线程；明确 wheel ABI |
+| 框架 | FastAPI + Uvicorn / h11 + Pydantic；显式路由与鉴权依赖，非 catch-all 手写路由包装 |
+| 前端 | strict TypeScript + Vite；保留 DOM / 品牌 / 浏览器存储及阻塞首屏外观行为 |
+| 运行资源 | wheel 包资源，开发可显式 `--assets`；不寻找父仓库或源码目录 |
+| 状态 | XDG / home state 默认路径；部署仍显式传原有 `--db` |
+| 依赖 | 应用 uv.lock / 前端 npm lock；显式获取，离线装配和安装 |
+| 安装工具 | 标准 venv / ensurepip + 随包锁定 pip；不额外分发 uv，不复制 venv |
+| 发布格式 | format 2；保留三个产物文件名，明确不兼容 v1 安装语义 |
+| Python agent | 独立脚本 / 配置 / 报告 fixtures，节点无需 Node、uv 或后端依赖 |
+| Node agent | 本版本明确不实现；能力只声明 python，未知选择失败而非回退 |
+| Caddy / proxy | 本版本明确不引入；沿用直达 HTTP(S) 上报，不自动改 TLS / 域名 |
 
-当前开发入口已使用 `uv sync --frozen` / `uv run --frozen`，开发 Python 为 3.13；当前中心发布要求仍为 Python 3.9+，agent 为 Python 3.6+。目录 / 框架阶段允许提高**中心**最低版本，但不得顺带提高 agent 要求。
+## 验收门槛
 
-中心新基线优先评估 Python 3.12+，在确认支持的中心平台、解释器来源、依赖 wheel 与测试矩阵后正式锁定，不在部署时自动升级系统 Python。控制端应用工具环境与 Ansible 环境独立，不把控制端 `.venv` 复制到中心。
+- [x] 应用独立环境下构建、测试；前端独立锁和构建。
+- [x] 离线安装后的中心在源码树外以 `-I` 启动，使用 wheel 内资源；完整浏览器回归。
+- [x] 格式、目标、摘要、缺失依赖、链接、坏包、嵌套模块和资源 receipt 测试。
+- [x] 独立标准库 agent 向已安装中心真实回环上报。
+- [x] API / 配置 / 数据库 / NULL / 历史时长 / CSV 与 UI 兼容回归。
+- [x] 外部控制器使用公开 CLI / 格式契约；实际离线 venv、假服务管理器驱动激活、回退、中断恢复和历史保留。
 
-新的配置 / 构建 CLI 复用已安装后端的 schema，需要应用自己的 uv 环境。集成方应使用显式、已准备好的应用工具解释器；现有 `-S` 调用只适用于目前的零运行依赖工具，开始加载第三方模型时必须同步调整，不靠 PYTHONPATH / sys.path 拼接解决。
-
-## 4. 首个中心交付方案：离线 wheel 集
-
-采用匹配明确中心 Python / 平台的 wheel 集，避免中心部署时依赖临时联网解析包版本：
-
-1. 应用构建端按 uv.lock 锁定依赖，构建前端，再构建后端 wheel。
-2. 收集匹配目标 Python / ABI / 平台的全部运行 wheel、带哈希的安装清单和安装工具；开发依赖不进入中心运行环境。
-3. 产物明确声明中心解释器约束。若使用随包 uv，应固定版本、目标平台和可信来源并校验摘要；其分发方式需在实现前确认。
-4. 部署到中心普通用户的版本化发布目录，用已批准的解释器创建全新环境；安装只能从随包产物离线完成，禁止自动下载 Python 或回退到公共索引。
-5. 环境在**最终路径**创建，不移动已初始化的 venv。验证导入、静态资源、配置和启动能力后才切换活动版本。
-6. 保留上一版本及单元元数据以便代码回退；实际配置、令牌、数据库和账户仍在原路径，不进入版本化代码目录。
-
-在线安装或容器不作为同时维护的首发路径；确有需要再另行增加。平台 / 解释器或安装工具不满足前提时明确失败，不能自动提权补齐。
-
-## 5. 发布契约与 Ansible 配合
-
-目前 release format=1 仍有效：server.tar.gz、agent.py、release.json。它已经支持 agent 源码独立，无需因源码位置改变而升级格式。
-
-中心改为 wheel / 环境安装时，虽然可继续使用 server.tar.gz 作为容器文件名，**安装语义已不兼容，应发布 format=2**。新版清单需明确：
-
-- 应用发行标识、版本 / 来源、中心 Python / 平台兼容条件。
-- 中心 wheel、依赖、安装清单、资源与安装工具的位置及摘要。
-- 受支持 agent 实现、各自入口 / 解释器要求、配置 / 报告版本和摘要。
-- 可执行的安装 / 启动约定；发布失败不能被误认为完整产物。
-
-先让外部部署适配器支持新格式并保留旧格式测试，再更新固定应用引用。配置生成与下载 / 构建应分开：普通配置更新可消费预构建发布目录，不能把长时间依赖获取塞进现有短超时 CLI 调用中。当前外部控制端已提供 tool_python / release_dir，应用 describe 契约和 v1 的 config_version 声明用于兼容检查；缺少预构建文件、损坏摘要或不兼容版本时明确失败。此入口准备尚不等于 v2 离线依赖、安装或回退已完成。
-
-Ansible 只知道这些公开入口和产物，不能读取 backend/src、frontend/src 或 agents 源文件。具体分发取值、SSH、账户、systemd、实际可执行文件路径与数据保护属于部署方。
-
-## 6. Node agent 与可配置分发
-
-Python 是默认且当前唯一实现。Node 版可在共同协议测试与产物能力声明完成后加入，不为目录齐全先复制一套未验证逻辑。
-
-每节点实现与运行命令应能通过部署配置覆盖；配置 token、采样周期和报告结构不因语言变化而变化。先验证所选实现存在、解释器版本兼容，再替换对应节点服务。不隐式探测后切换，不假定 GPU 节点有 Node，不把前端 npm 依赖分发到节点。
-
-Node agent 能独立运行，不自动意味着现有部署助手不需要 Python：当前用户服务管理脚本依赖 Python，支持纯 Node 节点前要单独处理这一部署前提。
-
-## 7. 实施门槛
-
-物理目录与安装契约调整作为一个可验证的阶段交付，不提交需要手工修 PYTHONPATH 才能运行的中间版本：
-
-- [ ] 应用独立 checkout 下，uv 环境可构建 / 测试 / 运行，前端可独立构建。
-- [ ] 从任意非源码目录运行安装后的后端，静态资源与状态路径正确。
-- [ ] 离线安装完整、依赖有锁和摘要，缺少 wheel / 错误平台 / 损坏产物提前失败。
-- [ ] agent 独立运行且不加载后端或第三方依赖；已有 agent 无需同步升级中心框架。
-- [ ] HTTP / agent / CSV 基线、浏览器持久登录与全部交互回归通过。
-- [ ] 外部 Ansible 消费新产物，预检、配置保留、活动版本切换、失败回退与清理测试通过。
-
-模块之间的数据、鉴权、错误、版本和调用边界见[通信契约](protocols.md)。这份设计不构成生产部署或管理员操作授权。
+停止边界：未执行生产升级、账户迁移、系统 Python 安装或反向代理变更。其他平台与 Python 版本、Node agent、自动环境垃圾回收均不是本版本承诺。
