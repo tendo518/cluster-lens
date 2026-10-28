@@ -52,26 +52,82 @@ function readPinnedHosts() {
   } catch {return [];}
 }
 const TOKEN_STORAGE_KEY = "hqlab-monitor-token";
-function readToken() {
-  try {const token = localStorage.getItem(TOKEN_STORAGE_KEY); if (token) return token;} catch { /* Try the legacy session when persistent storage is unavailable. */ }
-  try {return sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";} catch {return "";}
+// Non-secret change marker, not a session ID. Even an empty -> empty logout must
+// invalidate pending legacy migrations before the browser delivers storage events.
+// A session fallback records the same marker so a later logout also wins on reload.
+const AUTH_REVISION_KEY = "hqlab-monitor-auth-revision";
+function readSharedAuth() {
+  try {return {token:localStorage.getItem(TOKEN_STORAGE_KEY) || "", revision:localStorage.getItem(AUTH_REVISION_KEY) || ""};}
+  catch {return null;}
 }
+let sharedAuth = readSharedAuth(), authVersion = 0, legacyToken = "";
+function discardSessionToken() {
+  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY); sessionStorage.removeItem(AUTH_REVISION_KEY);} catch { /* Storage may be disabled. */ }
+}
+function readToken() {
+  if (sharedAuth?.token) {discardSessionToken(); return sharedAuth.token;}
+  try {
+    const token = sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";
+    if (sharedAuth?.revision && sessionStorage.getItem(AUTH_REVISION_KEY) !== sharedAuth.revision) {
+      discardSessionToken(); return "";
+    }
+    legacyToken = token; return token;
+  } catch {return "";}
+}
+function writeAuthRevision() {
+  const revision = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {localStorage.setItem(AUTH_REVISION_KEY, revision); return revision;}
+  catch {return sharedAuth?.revision || "";}
+}
+// Only an explicit validated login or the one-time legacy migration calls this.
 function saveToken(token) {
   if (!token) return true;
   try {
+    // Without readable shared state we cannot safely overwrite another tab's login.
+    if (!sharedAuth) throw new Error("Persistent storage unavailable");
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
   } catch {
-    try {sessionStorage.setItem(TOKEN_STORAGE_KEY, token);} catch { /* In-memory authentication still works. */ }
+    try {
+      sessionStorage.setItem(AUTH_REVISION_KEY, sharedAuth?.revision || "");
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } catch { /* In-memory authentication still works. */ }
     return false;
   }
-  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Persistent storage is already updated. */ }
+  sharedAuth = {token, revision:writeAuthRevision()};
+  discardSessionToken();
   return true;
 }
-function clearToken() {
-  state.token = "";
-  try {localStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Storage may be disabled. */ }
-  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Also discard legacy session credentials where possible. */ }
+function clearToken(broadcast = true) {
+  state.token = ""; authVersion++; legacyToken = "";
+  if (broadcast) {
+    const revision = writeAuthRevision();
+    try {localStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Storage may be disabled. */ }
+    sharedAuth = {token:"", revision};
+  }
+  discardSessionToken();
   $("#logout-button").hidden = true;
+}
+function syncSharedAuth() {
+  const current = readSharedAuth();
+  if (!current) return false;
+  if (current.token === (sharedAuth?.token || "") && current.revision === (sharedAuth?.revision || "")) {
+    sharedAuth = current; return false;
+  }
+  sharedAuth = current; authVersion++; legacyToken = ""; state.token = current.token;
+  discardSessionToken();
+  location.reload();
+  return true;
+}
+const authSnapshot = () => ({token:state.token, version:authVersion});
+function checkAuth(auth) {
+  // Inspect shared storage, not event.newValue: events can be delayed or obsolete.
+  if (syncSharedAuth() || auth.token !== state.token || auth.version !== authVersion) throw new AuthError("登录状态已变更");
+}
+function migrateLegacyToken(auth) {
+  if (!legacyToken || legacyToken !== auth.token) return;
+  checkAuth(auth);
+  legacyToken = ""; // One validated attempt; a failed write stays session/in-memory.
+  saveToken(auth.token);
 }
 const state = {overview:null, history:null, hours:1, custom:null, metric:"compute", historyHost:"", search:"", status:"all", processSearch:"", user:"", processPage:1, processPageSize:25, detail:null, detailGpu:"", pinned:readPinnedHosts(), token:readToken(), connected:false, lastSuccess:0, clockOffset:0, refreshing:false, historyRequest:0, historyCycle:null};
 const nowSeconds = () => Date.now() / 1000 + state.clockOffset;
@@ -80,11 +136,11 @@ function requireAuth() {
   if ($("#node-dialog").open) $("#node-dialog").close();
   if (!$("#auth-dialog").open) $("#auth-dialog").showModal();
 }
-async function request(path) {
-  const token = state.token;
-  const response = await fetch(path, {headers: token ? {Authorization:`Bearer ${token}`} : {}, signal:AbortSignal.timeout(20000), cache:"no-store"});
-  if (token !== state.token) throw new AuthError("登录状态已变更");
-  if (response.status === 401) {clearToken(); requireAuth(); throw new AuthError("需要访问令牌");}
+async function request(path, auth = authSnapshot()) {
+  checkAuth(auth);
+  const response = await fetch(path, {headers: auth.token ? {Authorization:`Bearer ${auth.token}`} : {}, signal:AbortSignal.timeout(20000), cache:"no-store"});
+  checkAuth(auth);
+  if (response.status === 401) {clearToken(!!auth.token); requireAuth(); throw new AuthError("需要访问令牌");}
   if (!response.ok) {
     let message = `请求失败 (${response.status})`;
     try {message = (await response.json()).error || message;} catch { /* Non-JSON gateway errors. */ }
@@ -93,8 +149,8 @@ async function request(path) {
   return response;
 }
 const api = async path => {
-  const token = state.token, data = await (await request(path)).json();
-  if (token !== state.token) throw new AuthError("登录状态已变更");
+  const auth = authSnapshot(), data = await (await request(path, auth)).json();
+  checkAuth(auth);
   return data;
 };
 let toastTimeout;
@@ -113,11 +169,11 @@ async function refreshOverview(forceHistory = false) {
   state.refreshing = true;
   $("#refresh-button").disabled = true;
   $("#refresh-button .icon").classList.add("rotating");
-  const token = state.token;
+  const auth = authSnapshot();
   try {
     const data = await api("/api/overview");
-    if (token !== state.token) return;
-    saveToken(token);
+    checkAuth(auth);
+    migrateLegacyToken(auth);
     state.overview = data; state.connected = true; state.lastSuccess = Date.now();
     state.clockOffset = data.server_time - Date.now() / 1000;
     $("#connection-error").hidden = true;
@@ -359,7 +415,9 @@ function openDetail(name, gpu = "") {
 function renderDetail() {
   const host = state.overview.hosts.find(h => h.name === state.detail);
   if (!host) return;
-  const focusedPin = document.activeElement?.closest("#node-detail [data-pin-node]")?.dataset.pinNode;
+  const focused = document.activeElement;
+  const focusedPin = focused?.closest("#node-detail [data-pin-node]")?.dataset.pinNode;
+  const focusedFilter = focused?.id === "detail-gpu-filter";
   const system = host.system || {}, good = available(host), scroll = $("#node-dialog").scrollTop;
   const processes = host.gpus.flatMap(g => g.processes.map(p => ({...p, host:host.name, gpu:g.index, capacity:g.memory_total_mb}))).filter(p => state.detailGpu === "" || String(p.gpu) === state.detailGpu);
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${escapeHTML(value)}</dd></div>`;
@@ -371,8 +429,9 @@ function renderDetail() {
   <section class="detail-section"><h3>${icon("users")}GPU 进程 <select id="detail-gpu-filter" aria-label="按 GPU 筛选进程"><option value="">全部 GPU</option>${host.gpus.map(g => `<option value="${g.index}" ${String(g.index) === state.detailGpu ? "selected" : ""}>GPU ${g.index}</option>`).join("")}</select></h3><div class="table-scroll"><table class="data-table"><thead><tr><th>用户</th><th>GPU</th><th>PID</th><th>进程</th><th>类型</th><th>显存占用</th></tr></thead><tbody>${processes.length ? processes.map(p => processRow(p, true)).join("") : '<tr><td colspan="6" class="table-empty">暂无可读取的 GPU 进程</td></tr>'}</tbody></table></div></section>
   <section class="detail-section"><h3>${icon("memory")}磁盘与挂载点</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>挂载点</th><th>使用率</th><th>已用 / 总计</th><th>可用</th></tr></thead><tbody>${(system.disks || []).map(d => `<tr><td class="mono">${escapeHTML(d.mount)}</td><td>${pct(d.percent, 1)}${meter(d.percent, d.percent >= 90 ? "amber" : "")}</td><td class="mono">${bytes(d.used_bytes)} / ${bytes(d.total_bytes)}</td><td class="mono">${bytes(d.available_bytes)}</td></tr>`).join("") || '<tr><td colspan="4" class="table-empty">磁盘数据暂不可读</td></tr>'}</tbody></table></div></section>`}
   <p class="detail-caption">进程类型：C = 计算 / G = 图形</p>`;
+  const control = focusedFilter ? $("#detail-gpu-filter") : focusedPin ? $$("#node-detail [data-pin-node]").find(button => button.dataset.pinNode === focusedPin) : null;
+  control?.focus({preventScroll:true});
   $("#node-dialog").scrollTop = scroll;
-  if (focusedPin) $("#node-detail [data-pin-node]")?.focus({preventScroll:true});
 }
 
 $("#refresh-button").addEventListener("click", () => refreshOverview(true));
@@ -443,7 +502,7 @@ document.addEventListener("click", event => {
   if (user) {state.user = user.dataset.user; state.processPage = 1; renderProcesses();}
 });
 $("#node-dialog").addEventListener("change", event => {
-  if (event.target.id === "detail-gpu-filter") {state.detailGpu = event.target.value; renderDetail(); $("#detail-gpu-filter")?.focus({preventScroll:true});}
+  if (event.target.id === "detail-gpu-filter") {state.detailGpu = event.target.value; renderDetail();}
 });
 $("#close-detail").addEventListener("click", () => $("#node-dialog").close());
 $("#node-dialog").addEventListener("click", event => {
@@ -453,24 +512,20 @@ $("#node-dialog").addEventListener("click", event => {
 $("#node-dialog").addEventListener("close", () => {state.detail = null;});
 $("#logout-button").addEventListener("click", () => {clearToken(); location.reload();});
 window.addEventListener("storage", event => {
-  let token;
   try {
-    if (event.storageArea !== localStorage || event.key !== TOKEN_STORAGE_KEY && event.key !== null) return;
-    token = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+    if (event.storageArea !== localStorage || ![TOKEN_STORAGE_KEY, AUTH_REVISION_KEY, null].includes(event.key)) return;
   } catch {return;}
-  if (token === state.token) return;
-  state.token = token;
-  try {sessionStorage.removeItem(TOKEN_STORAGE_KEY);} catch { /* Still reload when session storage is disabled. */ }
-  location.reload();
+  syncSharedAuth();
 });
 $("#auth-dialog").addEventListener("cancel", event => event.preventDefault());
 $("#auth-form").addEventListener("submit", async event => {
   event.preventDefault(); const button = $("#auth-form button"); button.disabled = true;
   const token = $("#access-token").value.trim();
-  state.token = token; $("#auth-error").hidden = true;
+  state.token = token; authVersion++; legacyToken = "";
+  const auth = authSnapshot(); $("#auth-error").hidden = true;
   try {
     await api("/api/overview");
-    if (token !== state.token) return;
+    checkAuth(auth);
     if (!saveToken(token)) toast("浏览器无法持久保存令牌，当前会话仍可使用；重新打开可能需要再次登录。");
     $("#access-token").value = ""; $("#auth-dialog").close(); await refreshOverview(true);
   } catch (error) {

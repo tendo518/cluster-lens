@@ -100,10 +100,10 @@ def main():
         db = args.db or ROOT / "data" / (
             "monitor-demo.sqlite3" if args.demo else "monitor.sqlite3"
         )
-        store = Store(db, interval, mode="demo" if args.demo else "live")
+        store = Store(db, mode="demo" if args.demo else "live")
         if args.demo:
             LOG.info("演示模式：生成最近 24 小时模拟历史，不会连接真实服务器")
-            seed_demo(store, hosts)
+            seed_demo(store, hosts, interval=interval)
         service = MonitoringService(
             hosts,
             store,

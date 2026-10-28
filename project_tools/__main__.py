@@ -1,10 +1,10 @@
-"""Public project CLI: python3 -m project_tools {configure,build,check-config}."""
+"""Public project CLI: python3 -m project_tools {configure,build,check-config,describe}."""
 
 import argparse
 import json
 from pathlib import Path
 
-from monitor.config import load_config
+from monitor.config import CONFIG_VERSION, load_config
 from monitor.ui import load_ui
 
 from .configure import generate
@@ -32,9 +32,20 @@ def main():
         "check-config", help="校验中心配置，不监听、不采集、不写数据库"
     )
     check.add_argument("path", type=Path)
+    commands.add_parser("describe", help="输出无凭据的 CLI / 配置版本契约 JSON")
     args = parser.parse_args()
     try:
-        if args.command == "build":
+        if args.command == "describe":
+            print(
+                json.dumps(
+                    {
+                        "contract_version": 1,
+                        "application": "hqlab-monitor",
+                        "config_version": CONFIG_VERSION,
+                    }
+                )
+            )
+        elif args.command == "build":
             build(args.output)
             print("发布产物已生成：server.tar.gz、agent.py、release.json")
         elif args.command == "check-config":

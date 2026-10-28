@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {setTimeout as sleep} from "node:timers/promises";
 
 export async function checkAuthentication({base, cdp, evaluate, click, setInput, waitFor, token}) {
-  const key = "hqlab-monitor-token";
+  const key = "hqlab-monitor-token", revisionKey = "hqlab-monitor-auth-revision";
   const dashboard = "!document.querySelector('#auth-dialog')?.open && document.querySelectorAll('#node-grid .node-card').length===8 && !!document.querySelector('.chart-primary') && !document.querySelector('#refresh-button').disabled";
   const storage = () => evaluate(`({local:localStorage.getItem(${JSON.stringify(key)}),session:sessionStorage.getItem(${JSON.stringify(key)})})`);
   async function reload(label, condition = dashboard) {
@@ -21,8 +21,9 @@ export async function checkAuthentication({base, cdp, evaluate, click, setInput,
   assert.equal(await evaluate("document.querySelector('#logout-button').hidden"), false);
   await reload("persistent authentication survives reload");
 
-  // A previously open session migrates only after a successful API response.
-  await evaluate(`localStorage.removeItem(${JSON.stringify(key)});sessionStorage.setItem(${JSON.stringify(key)},${JSON.stringify(token)})`);
+  // Simulate a pre-revision legacy session. A genuine old session has neither
+  // a shared change marker nor the marker attached to newer session fallbacks.
+  await evaluate(`localStorage.removeItem(${JSON.stringify(key)});localStorage.removeItem(${JSON.stringify(revisionKey)});sessionStorage.removeItem(${JSON.stringify(revisionKey)});sessionStorage.setItem(${JSON.stringify(key)},${JSON.stringify(token)})`);
   const fault = await cdp("Page.addScriptToEvaluateOnNewDocument", {source:"window.originalFetch=window.fetch;window.fetch=async()=>{throw new TypeError('simulated network outage')};"});
   try {
     await reload("legacy session survives a network outage", "document.querySelector('#connection-error')?.hidden===false");
@@ -45,19 +46,21 @@ export async function checkAuthentication({base, cdp, evaluate, click, setInput,
     assert.equal(await evaluate("document.querySelector('#auth-dialog').open"), false);
   }
 
-  // An obsolete 401 must not clear credentials from a later login.
+  // An obsolete 401 must not clear credentials after an in-memory token change.
+  // Real login/logout races (including same-token logins and delayed events) are
+  // exercised deterministically against app.js in frontend-auth.mjs.
   assert.equal(await evaluate(`(async()=>{
     const original=window.fetch;let resolve;
     window.fetch=()=>new Promise(done=>{resolve=done;});
     const pending=request('/api/overview').catch(error=>error instanceof AuthError);
-    const newer='newer-test-viewer-token';state.token=newer;localStorage.setItem(TOKEN_STORAGE_KEY,newer);
+    const newer='newer-test-viewer-token';state.token=newer;
     resolve(new Response('',{status:401}));
-    try {return await pending && state.token===newer && localStorage.getItem(TOKEN_STORAGE_KEY)===newer && !document.querySelector('#auth-dialog').open;}
-    finally {window.fetch=original;state.token=${JSON.stringify(token)};localStorage.setItem(TOKEN_STORAGE_KEY,state.token);}
+    try {return await pending && state.token===newer && localStorage.getItem(TOKEN_STORAGE_KEY)===${JSON.stringify(token)} && !document.querySelector('#auth-dialog').open;}
+    finally {window.fetch=original;state.token=${JSON.stringify(token)};}
   })()`), true, "late 401 cannot invalidate a newer token");
 
   // Rejected credentials never become persistent, including legacy sessions.
-  await evaluate(`localStorage.removeItem(${JSON.stringify(key)});sessionStorage.setItem(${JSON.stringify(key)},'invalid-legacy-token')`);
+  await evaluate(`localStorage.removeItem(${JSON.stringify(key)});localStorage.removeItem(${JSON.stringify(revisionKey)});sessionStorage.setItem(${JSON.stringify(key)},'invalid-legacy-token')`);
   await reload("invalid legacy credentials require login", "document.querySelector('#auth-dialog')?.open");
   assert.deepEqual(await storage(), {local:null, session:null});
   await login();
@@ -118,6 +121,8 @@ export async function checkAuthentication({base, cdp, evaluate, click, setInput,
     await waitFor("document.querySelector('#auth-dialog')?.open && !document.querySelector('#refresh-button').disabled", "logout reloads without saved credentials");
     await reopened.wait("document.querySelector('#auth-dialog')?.open", "logout propagates to another tab");
     assert.deepEqual(await storage(), {local:null, session:null});
+    assert.ok(await evaluate(`localStorage.getItem(${JSON.stringify(revisionKey)})`), "logout leaves only a non-secret change marker, even for tabs with pending legacy migration");
+    assert.equal(await evaluate(`sessionStorage.getItem(${JSON.stringify(revisionKey)})`), null);
     assert.equal(await evaluate("localStorage.getItem('auth-test-preference')"), "keep");
     assert.equal(await evaluate("state.overview"), null, "logout removes the previous dashboard data");
     await login();

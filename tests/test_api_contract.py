@@ -168,7 +168,7 @@ class LoopbackCase(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.store = Store(Path(temporary.name) / "contract.sqlite3", interval=30)
+        self.store = Store(Path(temporary.name) / "contract.sqlite3")
         self.service = MonitoringService(
             list(self.hosts),
             self.store,
@@ -479,7 +479,8 @@ class HistoryContractTests(LoopbackCase):
                 "status": "online",
                 "system": {"cpu_percent": 100, "memory_percent": 100},
                 "gpus": [gpu(utilization=100)],
-            }
+            },
+            interval=30,
         )
 
     def test_history_shape_card_weighting_offline_nulls_and_empty_buckets(self):
@@ -851,6 +852,9 @@ class ReportContractTests(LoopbackCase):
     def test_authenticated_protocol_errors_are_400_json(self):
         cases = [
             (report(version=2), "上报必须是 version=1 的 JSON 对象"),
+            (report(version=True), "上报必须是 version=1 的 JSON 对象"),
+            (report(version=1.0), "上报必须是 version=1 的 JSON 对象"),
+            (report(version="1"), "上报必须是 version=1 的 JSON 对象"),
             (report(report_id="invalid"), "report_id 必须是 UUID"),
             (
                 report(interval=60),

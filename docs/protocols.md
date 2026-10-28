@@ -47,7 +47,7 @@ Python agent 本机采集后发送一次，退出状态表示本次采集 / 上�
 - `Authorization: Bearer <该节点令牌>`。
 - `Content-Type: application/json`，支持附带 charset 参数。
 - 提供正整数 Content-Length；最大 1 MiB；不接受 Transfer-Encoding 或压缩正文。
-- body 是 version=1 对象，至少包含 host、report_id、collected_at、interval；成功采集含非空 system 与 gpus 数组。collection_ms、warnings、error 按协议处理。
+- body 是 version=1 对象，至少包含 host、report_id、collected_at、interval；成功采集含非空 system 与 gpus 数组。collection_ms、warnings、error 按协议处理。version 必须是 JSON 整数 1，不把 true、1.0 或字符串 "1" 转换成版本号；中心和 agent 配置使用同样的严格版本规则。
 - report_id 为 UUID 字符串，agent 每次新采样生成新 ID；重试同一报告应保留 ID，不能用旧数据构造新时间冒充新采样。
 - collected_at 为采样端 Unix 时间，与中心接收时间之差不超过 `max(60, 2 × interval)` 秒。interval 必须与中心配置一致。
 - 指标允许未知值 null，但拒绝 NaN、Infinity、越界数字、重复 GPU index、无效 PID 或超过限制的数组 / 字符串。完整规范化规则当前位于 `monitor/protocol.py`，通过协议测试固定。
@@ -89,7 +89,7 @@ Node 版尚未实现；不能仅改解释器名称就把 Python agent 当成 Nod
 
 - `MonitoringService.ingest(payload, authorization, now=None)`：完成鉴权、协议规范化、去重、持久化与发布。异常类型区分身份、演示策略、无效数据和存储失败；HTTP 适配器负责状态码。
 - `overview()` 返回独立的当前快照；`history(start, end, host)` 统一验证范围与节点选择，再请求 Store 的聚合事实并组装响应。
-- `Store.record()` / `record_many()` 在一个事务中写 samples 和 latest；`query_history()` 用一个读事务获得趋势、逐节点统计与合计；连接在操作完成后关闭。
+- `Store.record(snapshot, interval=...)` / `record_many(snapshots, interval=...)` 在一个事务中写 samples 和 latest；interval 是必须显式传入的关键字参数，由业务服务统一决定，Store 没有另一份默认周期。已保存样本的 sample_seconds 不随配置改变。`query_history()` 用一个读事务获得趋势、逐节点统计与合计；连接在操作完成后关闭。
 - `MonitorRuntime.step()` 调用业务维护；start / stop 只负责后台执行与结束，不实现 HTTP 路由。
 - `history_csv()` 对历史结果做纯格式转换，不访问数据库。
 

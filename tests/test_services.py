@@ -174,6 +174,38 @@ class MonitoringServiceTests(unittest.TestCase):
             self.service.history(1000, 1010, now=1030)["aggregate"]["samples"], 1
         )
 
+    def test_service_sampling_period_controls_persistence_and_response(self):
+        service = MonitoringService(
+            [self.hosts[0]], self.store, interval=60, credentials={"alpha": TOKEN}
+        )
+        report = {**payload(), "interval": 60}
+        service.ingest(report, "Bearer " + TOKEN, now=1000)
+        history = service.history(1000, 1060, now=1060)
+        self.assertEqual(history["sample_interval"], 60)
+        self.assertEqual(history["aggregate"]["observed_seconds"], 60)
+        self.assertEqual(history["aggregate"]["coverage"], 100)
+        self.assertAlmostEqual(history["aggregate"]["busy_gpu_hours"], 60 / 3600)
+        with self.store.connection() as db:
+            self.assertEqual(
+                db.execute("SELECT sample_seconds FROM samples").fetchone()[0], 60
+            )
+        # A new service's policy must not reinterpret already stored durations.
+        later = MonitoringService([self.hosts[0]], self.store, interval=300)
+        self.assertEqual(
+            later.history(1000, 1300, now=1300)["aggregate"]["observed_seconds"], 60
+        )
+
+    def test_invalid_sampling_period_cannot_write_or_create_a_service(self):
+        for interval in (True, 30.0, "30", 0, 4, 3601):
+            with self.subTest(interval=interval):
+                with self.assertRaises(ValueError):
+                    MonitoringService(self.hosts, self.store, interval=interval)
+                with self.assertRaises(ValueError):
+                    self.store.record_many([], interval=interval)
+        self.assertEqual(self.store.latest(), {})
+        with self.assertRaises(TypeError):
+            self.store.record_many([])
+
     def test_memory_statistics_are_capacity_weighted(self):
         report = payload()
         report["gpus"].append(
@@ -213,7 +245,7 @@ class MonitoringServiceTests(unittest.TestCase):
         broken["checked_at"] = 1030
         broken["warnings"] = [float("nan")]
         with self.assertRaises(ValueError):
-            self.store.record(broken)
+            self.store.record(broken, interval=30)
         self.assertEqual(self.store.latest(), original)
         self.assertEqual(
             self.service.history(1000, 1060, now=1060)["aggregate"]["samples"], 1
@@ -235,7 +267,7 @@ class MonitoringServiceTests(unittest.TestCase):
                 nonlocal wrote
                 if "WITH ordered" in statement and not wrote:
                     wrote = True
-                    writer.record(new_snapshot)
+                    writer.record(new_snapshot, interval=30)
 
             with connection() as db:
                 db.set_trace_callback(after_series)

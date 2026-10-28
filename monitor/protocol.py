@@ -58,7 +58,11 @@ def array(value, field, maximum):
 
 
 def validate_report(report, interval, now):
-    if not isinstance(report, dict) or report.get("version") != 1:
+    if (
+        not isinstance(report, dict)
+        or type(report.get("version")) is not int
+        or report["version"] != 1
+    ):
         raise ValueError("上报必须是 version=1 的 JSON 对象")
     report_id = text(report.get("report_id"), "report_id", 36)
     try:

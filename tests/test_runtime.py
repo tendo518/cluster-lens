@@ -163,16 +163,16 @@ class ProbeTests(unittest.TestCase):
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.store = Store(Path(self.temp.name) / "history.sqlite3", interval=30)
+        self.store = Store(Path(self.temp.name) / "history.sqlite3")
 
     def tearDown(self):
         self.temp.cleanup()
 
-    def history(self, start, end, names):
+    def history(self, start, end, names, interval=30):
         service = MonitoringService(
             [Host(name, "192.0.2.1") for name in names],
             self.store,
-            interval=self.store.interval,
+            interval=interval,
         )
         return service.history(start, end)
 
@@ -181,7 +181,8 @@ class StoreTests(unittest.TestCase):
             [
                 snapshot("alpha", 100, gpu_values=(100,)),
                 snapshot("beta", 100, gpu_values=(0, 0, 0)),
-            ]
+            ],
+            interval=30,
         )
         data = self.history(100, 130, names=["alpha", "beta"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 25)
@@ -196,7 +197,8 @@ class StoreTests(unittest.TestCase):
                 snapshot(ts=100, gpu_values=(80,)),
                 snapshot(ts=130, status="offline"),
                 snapshot(ts=400, gpu_values=(40,)),
-            ]
+            ],
+            interval=30,
         )
         data = self.history(100, 430, names=["alpha"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 60)
@@ -216,7 +218,8 @@ class StoreTests(unittest.TestCase):
 
     def test_zero_gpu_and_na_are_distinct(self):
         self.store.record_many(
-            [snapshot(ts=100, gpu_values=(0,)), snapshot(ts=130, gpu_values=(None,))]
+            [snapshot(ts=100, gpu_values=(0,)), snapshot(ts=130, gpu_values=(None,))],
+            interval=30,
         )
         data = self.history(100, 160, names=["alpha"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 0)
@@ -226,20 +229,20 @@ class StoreTests(unittest.TestCase):
 
     def test_filter_limits_to_current_inventory(self):
         self.store.record_many(
-            [snapshot("alpha", 100), snapshot("deleted", 100, gpu_values=(100,))]
+            [snapshot("alpha", 100), snapshot("deleted", 100, gpu_values=(100,))],
+            interval=30,
         )
         data = self.history(100, 130, names=["alpha"])
         self.assertEqual(data["aggregate"]["avg_gpu"], 50)
         self.assertEqual(len(data["stats"]), 1)
 
     def test_interval_change_does_not_rewrite_historical_gpu_hours(self):
-        self.store.record(snapshot(ts=100))
-        self.store.interval = 300
-        data = self.history(100, 400, names=["alpha"])
+        self.store.record(snapshot(ts=100), interval=30)
+        data = self.history(100, 400, names=["alpha"], interval=300)
         self.assertAlmostEqual(data["aggregate"]["busy_gpu_hours"], 30 / 3600)
 
     def test_latest_and_retention(self):
-        self.store.record_many([snapshot(ts=1), snapshot(ts=time.time())])
+        self.store.record_many([snapshot(ts=1), snapshot(ts=time.time())], interval=30)
         self.assertGreater(self.store.latest()["alpha"]["checked_at"], 1)
         self.store.prune(1)
         with self.store.connection() as db:
@@ -267,12 +270,11 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(result["system"], {})
 
     def test_demo_never_executes_commands(self):
-        self.store.interval = 3600
         with patch(
             "subprocess.run", side_effect=AssertionError("Demo cannot execute commands")
         ):
             hosts = demo_hosts()
-            seed_demo(self.store, hosts)
+            seed_demo(self.store, hosts, interval=3600)
             self.assertEqual(len(self.store.latest()), 8)
             self.assertEqual(demo_snapshot(hosts[-1], time.time())["status"], "offline")
             self.assertTrue(

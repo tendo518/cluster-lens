@@ -49,6 +49,21 @@ class ProjectToolsTests(unittest.TestCase):
         for path in files:
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_configuration_versions_are_integers_without_coercion(self):
+        generate(self.directory, self.nodes, self.url)
+        for path, load in (
+            (self.directory / "server.json", load_config),
+            (self.directory / "agents/node-a.json", remote_probe.load_agent_config),
+        ):
+            original = json.loads(path.read_text())
+            for version in (True, False, 1.0, "1", None, 0, 2, [], {}):
+                with self.subTest(file=path.name, version=version):
+                    path.write_text(json.dumps({**original, "version": version}))
+                    with self.assertRaisesRegex(ValueError, "version=1"):
+                        load(path)
+            path.write_text(json.dumps(original))
+            load(path)
+
     def test_node_changes_preserve_surviving_credentials(self):
         before = generate(self.directory, self.nodes, self.url)
         nodes = self.nodes + [{"name": "node-b", "address": "192.0.2.11"}]
@@ -164,6 +179,64 @@ class ProjectToolsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 server_bundle()
 
+    def test_release_includes_nested_python_modules_and_runs_outside_source(self):
+        project = Path(self.temp.name) / "nested-project"
+        package = project / "monitor"
+        (package / "api").mkdir(parents=True)
+        (package / "__init__.py").write_text("")
+        (package / "__main__.py").write_text(
+            "from monitor.api.routes import VALUE; print(VALUE)\n"
+        )
+        (package / "api/__init__.py").write_text("")
+        (package / "api/routes.py").write_text("VALUE = 'nested runtime works'\n")
+        for name in ("tests", "docs", "data", "config", "__pycache__", ".private"):
+            directory = package / name
+            directory.mkdir()
+            (directory / "secret.py").write_text("DO_NOT_DISTRIBUTE = True\n")
+        isolated = Path(self.temp.name) / "isolated-runtime"
+        isolated.mkdir()
+        with patch("project_tools.release.PROJECT", project):
+            bundle = server_bundle()
+            self.assertEqual(bundle, server_bundle())
+        with tarfile.open(fileobj=io.BytesIO(bundle)) as archive:
+            self.assertEqual(
+                archive.getnames(),
+                [
+                    "monitor/__init__.py",
+                    "monitor/__main__.py",
+                    "monitor/api/__init__.py",
+                    "monitor/api/routes.py",
+                ],
+            )
+            archive.extractall(isolated, filter="data")
+        result = subprocess.run(
+            [sys.executable, "-B", "-S", "-m", "monitor"],
+            cwd=isolated,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "nested runtime works")
+
+    def test_release_rejects_linked_runtime_directories(self):
+        project = Path(self.temp.name) / "linked-package"
+        package = project / "monitor"
+        package.mkdir(parents=True)
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        (outside / "secret.py").write_text("SECRET = True\n")
+        (outside / "secret.js").write_text("const secret = true;\n")
+        for name in ("api", "static"):
+            link = package / name
+            link.symlink_to(outside, target_is_directory=True)
+            with (
+                patch("project_tools.release.PROJECT", project),
+                self.assertRaisesRegex(ValueError, "符号链接"),
+            ):
+                server_bundle()
+            link.unlink()
+
     def test_agent_release_does_not_follow_symlinks(self):
         project = Path(self.temp.name) / "linked-project"
         agent_dir = project / "agents/python"
@@ -177,6 +250,42 @@ class ProjectToolsTests(unittest.TestCase):
         ):
             build(Path(self.temp.name) / "bad-release")
         self.assertFalse((Path(self.temp.name) / "bad-release").exists())
+
+    def test_release_missing_runtime_fails_before_publishing_any_artifact(self):
+        project = Path(self.temp.name) / "missing-runtime"
+        agent = project / "agents/python/agent.py"
+        agent.parent.mkdir(parents=True)
+        agent.write_text("pass\n")
+        output = Path(self.temp.name) / "not-published"
+        with (
+            patch("project_tools.release.PROJECT", project),
+            self.assertRaisesRegex(ValueError, "运行入口"),
+        ):
+            build(output)
+        self.assertFalse(output.exists())
+
+    def test_describe_contract_matches_release_configuration_version(self):
+        result = subprocess.run(
+            [sys.executable, "-B", "-S", "-m", "project_tools", "describe"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "contract_version": 1,
+                "application": "hqlab-monitor",
+                "config_version": 1,
+            },
+        )
+        self.assertEqual(
+            json.loads(result.stdout)["config_version"],
+            build(Path(self.temp.name) / "release")["config_version"],
+        )
+        self.assertFalse(self.directory.exists())
 
     def test_cli_retains_config_parameters_and_does_not_print_tokens(self):
         nodes = Path(self.temp.name) / "nodes.json"

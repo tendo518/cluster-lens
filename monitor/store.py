@@ -14,7 +14,7 @@ INSERT = """INSERT OR REPLACE INTO samples
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
 
-def sample_row(snapshot, interval=30):
+def sample_row(snapshot, interval):
     available = snapshot["status"] in ONLINE
     system = snapshot.get("system", {}) if available else {}
     gpus = snapshot.get("gpus", []) if available else []
@@ -42,11 +42,10 @@ def sample_row(snapshot, interval=30):
 
 
 class Store:
-    def __init__(self, path, interval=30, mode=None):
+    def __init__(self, path, *, mode=None):
         self.path = Path(path)
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.path.touch(mode=0o600, exist_ok=True)
-        self.interval = interval
         self.write_lock = threading.Lock()
         with self.connection() as db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -92,13 +91,16 @@ class Store:
                 for row in db.execute("SELECT * FROM latest")
             }
 
-    def record_many(self, snapshots):
+    def record_many(self, snapshots, *, interval):
+        """Persist the caller's sampling period; the repository owns no second default."""
+        if type(interval) is not int or not 5 <= interval <= 3600:
+            raise ValueError("采样间隔应为 5—3600 秒的整数")
         latest = {}
 
         def rows():
             for snapshot in snapshots:
                 latest[snapshot["name"]] = snapshot
-                yield sample_row(snapshot, self.interval)
+                yield sample_row(snapshot, interval)
 
         with self.write_lock, self.connection() as db:
             db.executemany(INSERT, rows())
@@ -110,8 +112,8 @@ class Store:
                 ),
             )
 
-    def record(self, snapshot):
-        self.record_many([snapshot])
+    def record(self, snapshot, *, interval):
+        self.record_many([snapshot], interval=interval)
 
     def prune(self, retention_days):
         with self.write_lock, self.connection() as db:

@@ -167,6 +167,11 @@ class PushServiceTests(unittest.TestCase):
         bad = []
         for key, value in (
             ("version", 2),
+            ("version", True),
+            ("version", False),
+            ("version", 1.0),
+            ("version", "1"),
+            ("version", None),
             ("interval", 60),
             ("report_id", "not-a-uuid"),
             ("collected_at", -100),

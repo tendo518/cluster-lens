@@ -10,7 +10,7 @@ ClusterLens 拥有运行包、页面、上报协议、配置校验、通用配�
 
 ## 控制端 CLI
 
-使用 Python 3.9+，在应用根目录调用；不需要安装应用包或第三方依赖：
+当前 v1 工具使用 Python 3.9+，在应用根目录调用；仍不需要安装应用包或第三方依赖。下面的 `-S` 入口仅适用于这一无依赖模式；使用显式的应用 uv 环境时应省略 `-S`，不得用它禁用需要的 site-packages：
 
 ```bash
 python3 -B -S -m project_tools build --output /absolute/staging
@@ -21,11 +21,14 @@ python3 -B -S -m project_tools configure \
   --output /absolute/private-config \
   --interval 30 --stale-after 100 --retention-days 30
 python3 -B -S -m project_tools check-config /absolute/private-config/server.json
+python3 -B -S -m project_tools describe
 ```
 
-三条命令均不连接节点。成功退出码为 0，失败非零；状态输出不包含凭据。路径跨工作目录时使用绝对路径。输入及优先级见[配置参考](configuration.md)。
+这些命令均不连接节点。成功退出码为 0，失败非零；状态输出不包含凭据。路径跨工作目录时使用绝对路径。输入及优先级见[配置参考](configuration.md)。
 
 部署方只传公开节点信息与应用配置，SSH 变量不进入应用模型。UI schema 及 icon_file 的处理属于应用；部署方只提供配置文件路径，不重复实现校验或 HTML 替换。
+
+`describe` 只输出 `{"contract_version":1,"application":"hqlab-monitor","config_version":1}`，无配置读取或写入。选择预构建发布目录时，先比较生成器的契约 / 配置版本与发布清单；缺少 describe 的旧生成器仍可使用原来的同源构建流程，但不能被默认为已验证的独立发布生成器。
 
 ## 发布产物
 
@@ -33,7 +36,7 @@ python3 -B -S -m project_tools check-config /absolute/private-config/server.json
 | --- | --- |
 | `server.tar.gz` | `monitor/` 下的中心运行 Python 与静态资源，不含 agent |
 | `agent.py` | 从 `agents/python/agent.py` 构建的 Python 3.6+ 独立采集 / 上报脚本 |
-| `release.json` | 格式版本、发行标识、两个产物的 SHA-256 |
+| `release.json` | 格式版本、发行标识、配置版本、两个产物的 SHA-256 |
 
 清单结构：
 
@@ -41,6 +44,7 @@ python3 -B -S -m project_tools check-config /absolute/private-config/server.json
 {
   "format_version": 1,
   "application": "hqlab-monitor",
+  "config_version": 1,
   "files": {
     "server.tar.gz": {"sha256": "<64 hex characters>"},
     "agent.py": {"sha256": "<64 hex characters>"}
@@ -48,7 +52,11 @@ python3 -B -S -m project_tools check-config /absolute/private-config/server.json
 }
 ```
 
-`application` 是稳定的机器可读发行标识，不控制页面品牌。归档排序、元数据及压缩时间戳固定，可以重复构建；产物中没有配置、凭据、数据库、测试、项目工具或部署代码。SHA-256 证明内容一致，不是来源签名，部署方必须信任源码 / 产物来源。
+`application` 是稳定的机器可读发行标识，不控制页面品牌。`config_version` 声明配置兼容版本；早期 v1 清单省略此字段时仍表示配置 v1，未知或非整数版本必须拒绝。它不是应用版本或源码来源证明。
+
+归档包含嵌套 Python 模块和受支持静态资源，排序、元数据及压缩时间戳固定，可以重复构建；产物中没有配置、凭据、数据库、测试、项目工具或部署代码，不跟随符号链接。SHA-256 证明内容一致，不是来源签名，部署方必须信任源码 / 产物来源。
+
+配置与构建可以分开：部署方可提前构建并保存完整发布目录，在普通配置更新时校验并使用该目录，不再次调用 build。必须在修改配置前拒绝不兼容清单、缺失或损坏产物，并在实际安装输入处检查摘要。构建 / 依赖准备应显式执行，不应藏在配置命令中触发联网安装。
 
 部署模板消费这三个产物，不扫描应用源码位置。中心从解压根目录启动：
 

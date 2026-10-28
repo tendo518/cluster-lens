@@ -11,6 +11,7 @@ import {fileURLToPath} from "node:url";
 import {checkWorkspaceNavigation} from "./workspace-navigation.mjs";
 import {checkBranding} from "./branding.mjs";
 import {checkAuthentication} from "./authentication.mjs";
+import {checkDetailFocus} from "./frontend-detail.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const artifacts = mkdtempSync(join(tmpdir(), "hqlab-browser-"));
@@ -261,6 +262,7 @@ try {
   await click(".gpu-tile[data-gpu='1']");
   assert.equal(await evaluate("document.querySelector('#detail-gpu-filter').value"), "1");
   assert.ok(await evaluate("document.querySelectorAll('.detail-gpu').length") > 0);
+  await checkDetailFocus({evaluate});
   for (const scheme of ["light", "dark"]) {
     await setScheme(scheme); await checkAppearance(scheme, `${scheme} inspector`);
     await screenshot(`node-inspector-${scheme}.png`);

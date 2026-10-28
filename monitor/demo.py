@@ -147,13 +147,16 @@ def demo_snapshot(host, ts):
     return classify(snapshot)
 
 
-def seed_demo(store, hosts):
+def seed_demo(store, hosts, *, interval):
     if store.latest():
         return
     now = time.time()
     # One day of history at the actual configured sample interval.
     store.record_many(
-        demo_snapshot(host, ts)
-        for ts in range(int(now - 86400), int(now), store.interval)
-        for host in hosts
+        (
+            demo_snapshot(host, ts)
+            for ts in range(int(now - 86400), int(now), interval)
+            for host in hosts
+        ),
+        interval=interval,
     )

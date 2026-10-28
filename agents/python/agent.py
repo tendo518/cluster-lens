@@ -262,7 +262,11 @@ class NoRedirect(HTTPRedirectHandler):
 
 def load_agent_config(path):
     config = json.loads(read_text(path))
-    if not isinstance(config, dict) or config.get("version") != 1:
+    if (
+        not isinstance(config, dict)
+        or type(config.get("version")) is not int
+        or config["version"] != 1
+    ):
         raise ValueError("agent 配置必须为 version=1 的 JSON 对象")
     host, token = config.get("host"), config.get("token")
     if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", host):

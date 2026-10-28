@@ -20,6 +20,10 @@ build output="dist":
 
 test:
     {{python}} -S -m unittest discover -s tests -v
+    node --test tests/frontend-auth.mjs
+
+frontend-test:
+    node --test tests/frontend-auth.mjs
 
 browser-test:
     uv run --frozen node tests/browser-smoke.mjs
@@ -31,3 +35,5 @@ check:
     node --check tests/workspace-navigation.mjs
     node --check tests/branding.mjs
     node --check tests/authentication.mjs
+    node --check tests/frontend-auth.mjs
+    node --check tests/frontend-detail.mjs

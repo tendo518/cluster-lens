@@ -6,7 +6,7 @@ import secrets
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from monitor.config import load_config, parse_config
+from monitor.config import CONFIG_VERSION, load_config, parse_config
 from monitor.ui import parse_ui
 
 from .files import private_write
@@ -50,7 +50,7 @@ def generate(
     old = load_config(previous)[0] if previous.exists() else {}
     old_tokens = {h["name"]: h["agent_token"] for h in old.get("hosts", [])}
     config = {
-        "version": 1,
+        "version": CONFIG_VERSION,
         "interval": interval,
         "stale_after": stale_after,
         "retention_days": retention_days,

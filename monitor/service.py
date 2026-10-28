@@ -43,6 +43,8 @@ class MonitoringService:
         demo=False,
         credentials=None,
     ):
+        if type(interval) is not int or not 5 <= interval <= 3600:
+            raise ValueError("采样间隔应为 5—3600 秒的整数")
         self.hosts, self.store = hosts, store
         self.host_map = {host.name: host for host in hosts}
         self.interval, self.stale_after = interval, stale_after
@@ -128,7 +130,7 @@ class MonitoringService:
         snapshot["known_gpu_count"] = (
             len(snapshot["gpus"]) if good else previous.get("known_gpu_count", 0)
         )
-        self.store.record(snapshot)
+        self.store.record(snapshot, interval=self.interval)
         self.snapshots[snapshot["name"]] = snapshot
         self.last_cycle = snapshot["checked_at"]
 

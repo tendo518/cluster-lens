@@ -8,6 +8,7 @@
 | --- | --- |
 | 中心 | Python 3.9+、SQLite 3.25+ |
 | 采集端 | Linux、Python 3.6+；GPU 指标需要 `nvidia-smi` |
+| 前端单测 | Node.js 22+，不需要服务器或浏览器 |
 | 浏览器测试 | Node.js 22+、Chrome / Chromium |
 
 当前版本的中心与采集端仅使用 Python 标准库；前端是原生 JS / CSS / SVG，无需 pip、Node 构建或第三方运行依赖。本项目以源码和运行归档发行，不提供 `pip install .` 安装方式。
@@ -73,12 +74,13 @@ python3 agents/python/agent.py --config config/local/agents/node-a.json
 ```bash
 uv run --frozen python -B -S -m project_tools build --output dist
 uv run --frozen python -S -m unittest discover -s tests -v
+node --test tests/frontend-auth.mjs
 uv run --frozen node tests/browser-smoke.mjs
 ```
 
 Python host 脚本源码位于 `agents/python/agent.py`，独立于后端包，不导入后端模块。发布输出为 `server.tar.gz`、`agent.py`、`release.json`，不含配置、数据库、测试或部署工具。中心在归档解压根目录运行 `python3 -m monitor`，采集端执行独立 `agent.py`。集成方应使用[公开 CLI 和产物契约](docs/integration.md)，不导入应用内部模块。
 
-可选 Just 入口：`just demo`、`just configure`、`just run <配置>`、`just build`、`just test`、`just check`、`just browser-test`。Python 命令默认使用应用的 uv 环境，可用 `PYTHON` 显式覆盖；Ruff 用于静态检查。当前中心归档和单文件 agent 仍可直接由 Python 运行，受管节点不因开发工具变化而需要 uv。
+可选 Just 入口：`just demo`、`just configure`、`just run <配置>`、`just build`、`just test`（Python 与前端单测）、`just frontend-test`、`just check`、`just browser-test`。Python 命令默认使用应用的 uv 环境，可用 `PYTHON` 显式覆盖；Ruff 用于静态检查。当前中心归档和单文件 agent 仍可直接由 Python 运行，受管节点不因开发工具变化而需要 uv。
 
 ## 架构资料
 

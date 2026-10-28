@@ -9,6 +9,8 @@ from pathlib import Path
 from .models import Host
 from .ui import parse_ui
 
+CONFIG_VERSION = 1
+
 
 def valid_token(value):
     return (
@@ -28,7 +30,11 @@ def load_config(path):
 
 def parse_config(config):
     """Validate the public version=1 configuration without filesystem side effects."""
-    if not isinstance(config, dict) or config.get("version") != 1:
+    if (
+        not isinstance(config, dict)
+        or type(config.get("version")) is not int
+        or config["version"] != CONFIG_VERSION
+    ):
         raise ValueError("监控配置必须是 version=1 的 JSON 对象")
     parse_ui(config.get("ui", {}))
     interval = config.get("interval", 30)
